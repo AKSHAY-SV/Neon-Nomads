@@ -74,15 +74,15 @@ def main():
     print('\n[3/7] Comparing regression models (5-fold CV, Valid-only training rows)...')
     train_valid = train_scored[train_scored['Validity_Label'] == 'Valid']
     try:
-        results, fitted_models = compare_models(train_valid, n_splits=5)
+        results, fitted_models, feature_cols = compare_models(train_valid, n_splits=5)
     except Exception:
         print('ERROR during model comparison:')
         traceback.print_exc()
         sys.exit(1)
     print(results.to_string(index=False))
-    best_name, best_model = select_and_fit_best(train_valid, results, fitted_models)
+    best_name, best_model, feature_cols = select_and_fit_best(train_valid, results, fitted_models, feature_cols=feature_cols)
     print(f'\n  Selected model: {best_name} (CV MAE={results.iloc[0]['MAE']:.4f}, RMSE={results.iloc[0]['RMSE']:.4f}, R2={results.iloc[0]['R2']:.4f})')
-    imp = feature_importance(best_name, best_model)
+    imp = feature_importance(best_name, best_model, feature_cols)
     if imp is not None:
         print('\n  Feature importance:')
         for feat, val in imp.items():
@@ -103,13 +103,13 @@ def main():
         better_subset = 'valid_only'
     model_path = os.path.join(output_dir, 'model.joblib')
     try:
-        save_model(best_model, model_path)
+        save_model(best_model, model_path, feature_cols=feature_cols)
         print(f'  Saved fitted model -> {model_path}')
     except Exception:
         print('WARNING: failed to save the trained model (non-fatal):')
         traceback.print_exc()
     print('\n[5/7] Predicting Reference_Parameter for all test records...')
-    test_scored['Predicted_Reference_Parameter'] = predict(best_model, test_scored)
+    test_scored['Predicted_Reference_Parameter'] = predict(best_model, test_scored, feature_cols=feature_cols)
     n_nan_pred = int(pd.isna(test_scored['Predicted_Reference_Parameter']).sum())
     if n_nan_pred > 0:
         print(f'  WARNING: {n_nan_pred} NaN predictions found - filling with training mean as a safeguard.')
