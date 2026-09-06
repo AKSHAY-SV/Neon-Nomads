@@ -375,13 +375,17 @@ def load_model(path: Path | str) -> Tuple[Any, Optional[List[str]]]:
         return obj["model"], obj.get("feature_cols")
     return obj, None
 
-
 if __name__ == "__main__":
+    import os
     import sys
-    sys.path.insert(0, ".")
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from preprocessing import load_and_clean
 
-    tr, te = load_and_clean("../data/training_data.csv", "../data/test_data.csv")
+    _data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
+    tr, te = load_and_clean(
+        os.path.join(_data_dir, "training_data.csv"),
+        os.path.join(_data_dir, "test_data.csv"),
+    )
     tr_valid = tr[tr["Validity_Label"] == "Valid"]
 
     results, fitted, feature_cols = compare_models(tr_valid)
