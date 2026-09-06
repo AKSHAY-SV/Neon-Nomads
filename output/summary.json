@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-05T20:49:44.873329+00:00",
+  "generated_at_utc": "2026-09-06T12:59:03.695495+00:00",
   "team_name": "Neon Nomads",
   "records_analysed": 350,
   "abnormal_invalid_count": 41,
@@ -36,24 +36,24 @@
       },
       {
         "model": "ExtraTrees",
-        "MAE": 0.6441069481604735,
-        "MAE_std": 0.04087927744421909,
+        "MAE": 0.6441069481604733,
+        "MAE_std": 0.04087927744421902,
         "RMSE": 1.2696085098627934,
         "R2": 0.9854965615563241
       },
       {
         "model": "RandomForest",
-        "MAE": 0.683490635319881,
-        "MAE_std": 0.03972041594955576,
-        "RMSE": 1.2152019367363445,
+        "MAE": 0.6834906353198813,
+        "MAE_std": 0.03972041594955589,
+        "RMSE": 1.2152019367363442,
         "R2": 0.9869021032715738
       },
       {
         "model": "Ridge",
-        "MAE": 3.360568516483583,
-        "MAE_std": 0.036586425691002546,
-        "RMSE": 3.9626913970191806,
-        "R2": 0.8634413706264727
+        "MAE": 3.3605685164835846,
+        "MAE_std": 0.03658642569100098,
+        "RMSE": 3.9626913970191837,
+        "R2": 0.8634413706264725
       }
     ],
     "training_subset_used": "valid_only",
@@ -91,7 +91,7 @@
     "chosen_threshold": 0.45,
     "threshold_selection_metric": "F1 on out-of-fold predictions",
     "n_folds": 5,
-    "override_z_threshold": 3.548351549689275
+    "override_z_threshold": 3.548351549689271
   },
   "duplicate_logic_verification_train": {
     "n_duplicate_rows": 24,
@@ -101,5 +101,5 @@
   },
   "methodology_explanation": "Imputer/consistency-lines/scaler/Isolation-Forest/classifier fit only on training folds (no leakage); test data transformed only. Invalid records flagged via physical-consistency checks, duplicate-row detection, Isolation Forest and a classifier, threshold chosen by out-of-fold F1. Reference_Parameter predicted with the best cross-validated regressor (GradientBoosting) trained on verified rows.",
   "methodology_explanation_word_count": 42,
-  "pipeline_runtime_seconds": 17.12
+  "pipeline_runtime_seconds": 12.76
 }
