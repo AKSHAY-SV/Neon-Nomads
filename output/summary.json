@@ -1,0 +1,105 @@
+{
+  "generated_at_utc": "2026-09-05T20:49:44.873329+00:00",
+  "team_name": "Neon Nomads",
+  "records_analysed": 350,
+  "abnormal_invalid_count": 41,
+  "abnormal_invalid_percentage": 11.71,
+  "predicted_reference_parameter": {
+    "minimum": 12.7701,
+    "maximum": 58.4281,
+    "average": 26.3806
+  },
+  "test_ids_requiring_highest_attention": [
+    "TST-0258",
+    "TST-0142",
+    "TST-0178"
+  ],
+  "model_selection": {
+    "selected_model": "GradientBoosting",
+    "cv_mae": 0.5358,
+    "cv_rmse": 0.8483,
+    "cv_r2": 0.9937,
+    "all_models_compared": [
+      {
+        "model": "GradientBoosting",
+        "MAE": 0.5358366106361708,
+        "MAE_std": 0.04824549531739001,
+        "RMSE": 0.8483297883316864,
+        "R2": 0.9936794435137044
+      },
+      {
+        "model": "HistGradientBoosting",
+        "MAE": 0.63558569484352,
+        "MAE_std": 0.0412821879080445,
+        "RMSE": 1.0717383782418095,
+        "R2": 0.9897094791792039
+      },
+      {
+        "model": "ExtraTrees",
+        "MAE": 0.6441069481604735,
+        "MAE_std": 0.04087927744421909,
+        "RMSE": 1.2696085098627934,
+        "R2": 0.9854965615563241
+      },
+      {
+        "model": "RandomForest",
+        "MAE": 0.683490635319881,
+        "MAE_std": 0.03972041594955576,
+        "RMSE": 1.2152019367363445,
+        "R2": 0.9869021032715738
+      },
+      {
+        "model": "Ridge",
+        "MAE": 3.360568516483583,
+        "MAE_std": 0.036586425691002546,
+        "RMSE": 3.9626913970191806,
+        "R2": 0.8634413706264727
+      }
+    ],
+    "training_subset_used": "valid_only",
+    "training_subset_comparison": {
+      "valid_only": {
+        "n_rows": 866,
+        "MAE": 0.5358366106361708,
+        "RMSE": 0.8483297883316864,
+        "R2": 0.9936794435137044
+      },
+      "all_rows": {
+        "n_rows": 1000,
+        "MAE": 0.884316675398909,
+        "RMSE": 2.3090347357014713,
+        "R2": 0.9477750120583706
+      }
+    }
+  },
+  "anomaly_detection_out_of_fold_performance_vs_historical_labels": {
+    "accuracy": 0.966,
+    "precision": 0.9166666666666666,
+    "recall": 0.8208955223880597,
+    "f1": 0.8661417322834646,
+    "roc_auc": 0.9109303367688117,
+    "confusion_matrix": [
+      [
+        856,
+        10
+      ],
+      [
+        24,
+        110
+      ]
+    ],
+    "chosen_threshold": 0.45,
+    "threshold_selection_metric": "F1 on out-of-fold predictions",
+    "n_folds": 5,
+    "override_z_threshold": 3.548351549689275
+  },
+  "duplicate_logic_verification_train": {
+    "n_duplicate_rows": 24,
+    "n_duplicate_pairs": 12,
+    "n_duplicate_rows_labelled_invalid": 24,
+    "all_duplicates_invalid": true
+  },
+  "methodology_explanation": "Imputer/consistency-lines/scaler/Isolation-Forest/classifier fit only on training folds (no leakage); test data transformed only. Invalid records flagged via physical-consistency checks, duplicate-row detection, Isolation Forest and a classifier, threshold chosen by out-of-fold F1. Reference_Parameter predicted with the best cross-validated regressor (GradientBoosting) trained on verified rows.",
+  "methodology_explanation_word_count": 42,
+  "pipeline_runtime_seconds": 17.12
+}
