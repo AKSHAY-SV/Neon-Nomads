@@ -61,6 +61,9 @@ def build_evaluation_text(
     n_test: int,
     cv_folds_regression: int,
     cv_folds_classification: int,
+    feature_set: Optional[str] = None,
+    holdout_metrics: Optional[Dict[str, Any]] = None,
+    robustness_summary: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Formats the plain-text evaluation.txt content. Pure formatting -
     every value here is passed in from metrics the pipeline already
@@ -78,10 +81,24 @@ def build_evaluation_text(
         "REFERENCE PARAMETER",
         "-------------------",
         f"Model: {regression_model_name}",
+        f"Feature set used: {feature_set if feature_set else 'all'}",
         f"MAE  (lower is better):  {regression_metrics['MAE']:.4f}",
         f"RMSE (lower is better):  {regression_metrics['RMSE']:.4f}",
         f"R2   (higher is better): {regression_metrics['R2']:.4f}",
         "",
+    ]
+    if holdout_metrics:
+        lines += [
+            "UNTOUCHED HOLDOUT EVALUATION (never used for tuning/model/feature selection)",
+            "-----------------------------------------------------------------",
+            f"Dev rows: {holdout_metrics.get('dev_size')}   Holdout rows: {holdout_metrics.get('holdout_size')}"
+            f"  (holdout ratio {holdout_metrics.get('holdout_ratio')})",
+            f"Holdout MAE:  {holdout_metrics['MAE']:.4f}",
+            f"Holdout RMSE: {holdout_metrics['RMSE']:.4f}",
+            f"Holdout R2:   {holdout_metrics['R2']:.4f}",
+            "",
+        ]
+    lines += [
         "VALID / INVALID CLASSIFICATION",
         "------------------------------",
         f"Model: {classification_report.get('selected_classifier', 'n/a')}",
@@ -105,6 +122,15 @@ def build_evaluation_text(
         f"Validation folds (classification): {cv_folds_classification}",
         f"Test records (final predictions, no ground truth): {n_test}",
         "",
+    ]
+    if robustness_summary:
+        lines += ["ROBUSTNESS TESTS (perturbation trials on training data)", "-" * 56]
+        for scenario, stats in robustness_summary.items():
+            f1v = stats.get('f1_mean')
+            f1s = f1v if f1v is not None else float('nan')
+            lines.append(f"  {scenario:<20s}: F1={f1s:.4f} (n_trials={stats.get('n_trials')})")
+        lines.append("")
+    lines += [
         "IMPORTANT:",
         "These are INTERNAL VALIDATION metrics, computed only from",
         "data/training_data.csv (which has ground truth).",
@@ -133,6 +159,10 @@ def build_summary_dict(
     n_invalid_test: int,
     cv_folds_regression: int,
     cv_folds_classification: int,
+    feature_set: Optional[str] = None,
+    feature_set_comparison: Any = None,
+    holdout_metrics: Optional[Dict[str, Any]] = None,
+    robustness_results: Any = None,
 ) -> Dict[str, Any]:
     """Assembles the summary.json content. Pure aggregation of metrics the
     pipeline already computed - no new metric calculation."""
@@ -142,12 +172,16 @@ def build_summary_dict(
         "reference_parameter_model": {
             "name": regression_model_name,
             "parameters": regression_model_params,
+            "feature_set": feature_set,
+            "feature_set_comparison": feature_set_comparison,
             "cv_folds": cv_folds_regression,
             "MAE": round(float(regression_metrics["MAE"]), 4),
             "RMSE": round(float(regression_metrics["RMSE"]), 4),
             "R2": round(float(regression_metrics["R2"]), 4),
             "all_models_compared": all_regression_models_compared,
+            "holdout_evaluation": holdout_metrics,
         },
+        "robustness_results": robustness_results,
         "validity_classification_model": {
             "name": classification_report.get("selected_classifier"),
             "cv_folds": cv_folds_classification,
@@ -194,6 +228,11 @@ def save_run(
     n_invalid_test: int,
     cv_folds_regression: int = 5,
     cv_folds_classification: int = 5,
+    feature_set: Optional[str] = None,
+    feature_set_comparison: Any = None,
+    holdout_metrics: Optional[Dict[str, Any]] = None,
+    robustness_results: Any = None,
+    robustness_summary: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Creates a new runs/run_XXX/ folder and writes:
       - Neon Nomads.csv  (copy of the hackathon prediction output)
@@ -222,6 +261,9 @@ def save_run(
         n_test=n_test,
         cv_folds_regression=cv_folds_regression,
         cv_folds_classification=cv_folds_classification,
+        feature_set=feature_set,
+        holdout_metrics=holdout_metrics,
+        robustness_summary=robustness_summary,
     )
     with open(os.path.join(run_dir, "evaluation.txt"), "w") as f:
         f.write(eval_text)
@@ -241,6 +283,10 @@ def save_run(
         n_invalid_test=n_invalid_test,
         cv_folds_regression=cv_folds_regression,
         cv_folds_classification=cv_folds_classification,
+        feature_set=feature_set,
+        feature_set_comparison=feature_set_comparison,
+        holdout_metrics=holdout_metrics,
+        robustness_results=robustness_results,
     )
     with open(os.path.join(run_dir, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
