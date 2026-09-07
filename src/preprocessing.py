@@ -1,31 +1,3 @@
-"""
-preprocessing.py
-----------------
-Loads the raw training/test data and performs cleaning:
-- type coercion
-- impossible-value handling (physically implausible readings -> NaN)
-- duplicate-feature-row flagging (structural, uses no target/label information)
-- missing-value imputation via a transformer that is FIT ONLY ON TRAINING
-  DATA and then reused (transform-only) on the test data, to avoid any
-  train/test leakage.
-- infinite value handling
-- outlier detection (optional, logged only)
-- train/test column alignment
-
-Fix vs previous version
------------------------
-The previous version called `KNNImputer().fit_transform()` independently on
-train and on test. That means the "neighbours" used to impute a test row's
-missing sensor value could come from other test rows (and the imputer's
-internal statistics were refit on test-only data) - not a target leak in
-the strict sense (no label information was used), but a violation of
-prevent-the-model-touching-test-data-during-fitting hygiene, and it makes
-imputation behave inconsistently between the two datasets. This version
-fits ONE imputer on the training feature distribution and calls
-`.transform()` (never `.fit()`) on the test data, exactly as an
-sklearn Pipeline would in production/inference.
-"""
-
 from __future__ import annotations
 import logging
 import numpy as np
@@ -34,7 +6,6 @@ from sklearn.impute import KNNImputer
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -49,9 +20,6 @@ FEATURE_COLS = [
     "Sensor_S4",
 ]
 
-# Physically implausible bounds (loose - domain sanity checks only, fixed
-# constants derived from the parameter descriptions, not fit from data, so
-# applying them independently to train/test introduces no leakage).
 PLAUSIBLE_RANGES = {
     "Applied_Voltage_kV": (0, 100),
     "Load_Current_A": (0, 500),
@@ -63,7 +31,6 @@ PLAUSIBLE_RANGES = {
     "Sensor_S4": (0, 300),
 }
 
-# Outlier detection bounds (using IQR method - logged only, not removed)
 OUTLIER_IQR_MULTIPLIER = 1.5
 
 
@@ -83,13 +50,23 @@ class ImpossibleValueClipper(BaseEstimator, TransformerMixin):
     def transform(self, X):
         X = pd.DataFrame(X, columns=self.columns).copy()
         n_total = len(X)
-        for col, (lo, hi) in self.ranges.items():
-            if col in X.columns:
-                bad = (X[col] < lo) | (X[col] > hi)
-                n_bad = int(bad.sum())
-                if n_bad > 0:
-                    logger.info(f"ImpossibleValueClipper: {col} - {n_bad}/{n_total} values outside [{lo}, {hi}] set to NaN")
-                X.loc[bad, col] = np.nan
+        cols = [c for c in self.ranges if c in X.columns]
+        if not cols:
+            return X.values
+
+        lo = np.array([self.ranges[c][0] for c in cols], dtype=float)
+        hi = np.array([self.ranges[c][1] for c in cols], dtype=float)
+        sub = X[cols].to_numpy(dtype=float, copy=True)
+        bad = (sub < lo) | (sub > hi)  # broadcasts (n_rows, n_cols) vs (n_cols,)
+
+        n_bad_per_col = bad.sum(axis=0)
+        for col, n_bad in zip(cols, n_bad_per_col):
+            if n_bad > 0:
+                lo_c, hi_c = self.ranges[col]
+                logger.info(f"ImpossibleValueClipper: {col} - {int(n_bad)}/{n_total} values outside [{lo_c}, {hi_c}] set to NaN")
+
+        sub[bad] = np.nan
+        X[cols] = sub
         return X.values
 
 
@@ -105,14 +82,112 @@ class InfiniteValueHandler(BaseEstimator, TransformerMixin):
     def transform(self, X):
         X = pd.DataFrame(X, columns=self.columns).copy()
         n_total = len(X)
-        for col in self.columns:
-            if col in X.columns:
-                inf_mask = np.isinf(X[col])
-                n_inf = int(inf_mask.sum())
-                if n_inf > 0:
-                    logger.info(f"InfiniteValueHandler: {col} - {n_inf}/{n_total} infinite values set to NaN")
-                X.loc[inf_mask, col] = np.nan
+        cols = [c for c in self.columns if c in X.columns]
+        if not cols:
+            return X.values
+
+        sub = X[cols].to_numpy(dtype=float, copy=True)
+        bad = np.isinf(sub)
+        n_bad_per_col = bad.sum(axis=0)
+        for col, n_bad in zip(cols, n_bad_per_col):
+            if n_bad > 0:
+                logger.info(f"InfiniteValueHandler: {col} - {int(n_bad)}/{n_total} infinite values set to NaN")
+
+        sub[bad] = np.nan
+        X[cols] = sub
         return X.values
+
+
+
+RAW_FEATURE_COLS = FEATURE_COLS  # alias: raw sensor/operating-condition columns
+TARGET_COL = "Reference_Parameter"
+
+RATIO_CLIP = 1e4
+
+
+def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Derive physics-informed features from the raw operating-condition
+    and sensor columns. Purely row-wise algebra (no fitting, no dataset
+    statistics), so this is safe to call independently on train and test
+    without any leakage risk - unlike the KNN imputer above, it has no
+    state to fit.
+    """
+    df_feat = df.copy()
+
+    voltage = df_feat["Applied_Voltage_kV"].astype(float)
+    current = df_feat["Load_Current_A"].astype(float)
+    temp = df_feat["Ambient_Temperature_C"].astype(float)
+    duration = df_feat["Test_Duration_min"].astype(float)
+
+    eps = 1e-6
+    with np.errstate(divide="ignore", invalid="ignore"):
+        df_feat["Power_kVA"] = voltage * current
+        df_feat["Impedance_proxy"] = (voltage / (current + eps)).clip(-RATIO_CLIP, RATIO_CLIP)
+        df_feat["Energy_proxy"] = df_feat["Power_kVA"] * (duration / 60.0)
+        df_feat["Thermal_Load"] = current * temp
+        df_feat["Temp_Duration"] = temp * duration
+
+        sensor_cols = ["Sensor_S1", "Sensor_S2", "Sensor_S3", "Sensor_S4"]
+        sensors = df_feat[sensor_cols].astype(float)
+
+        df_feat["Sensor_Mean"] = sensors.mean(axis=1)
+        df_feat["Sensor_Std"] = sensors.std(axis=1).fillna(0.0)
+        df_feat["Sensor_Min"] = sensors.min(axis=1)
+        df_feat["Sensor_Max"] = sensors.max(axis=1)
+        df_feat["Sensor_Spread"] = df_feat["Sensor_Max"] - df_feat["Sensor_Min"]
+
+        df_feat["Sensor_Diff_12"] = df_feat["Sensor_S1"] - df_feat["Sensor_S2"]
+        df_feat["Sensor_Diff_34"] = df_feat["Sensor_S3"] - df_feat["Sensor_S4"]
+        df_feat["Sensor_Ratio_12"] = (df_feat["Sensor_S1"] / (df_feat["Sensor_S2"].abs() + eps)).clip(-RATIO_CLIP, RATIO_CLIP)
+        df_feat["Sensor_Ratio_34"] = (df_feat["Sensor_S3"] / (df_feat["Sensor_S4"].abs() + eps)).clip(-RATIO_CLIP, RATIO_CLIP)
+
+        df_feat["Power_Sensor_Ratio"] = (df_feat["Power_kVA"] / (df_feat["Sensor_Mean"].abs() + eps)).clip(-RATIO_CLIP, RATIO_CLIP)
+
+    return df_feat
+
+
+_NON_FEATURE_COLS = {
+    TARGET_COL, "Test_ID", "Record_ID", "Validity_Label", "Anomaly_Flag", "ID", "Split",
+    "Is_Duplicate_Feature_Row", "Predicted_Invalid", "clf_proba_invalid",
+    "iso_forest_score", "_attention_score",
+}
+
+
+def get_feature_names(df: pd.DataFrame) -> list:
+    """All numeric, non-metadata/target columns currently in `df` - i.e.
+    whatever raw + engineered features happen to be present."""
+    return [col for col in df.columns
+            if col not in _NON_FEATURE_COLS and pd.api.types.is_numeric_dtype(df[col])]
+
+
+def select_feature_set(df: pd.DataFrame, feature_set: str = "all") -> list:
+    """Select a named feature subset for modelling/ablation.
+
+    Options:
+    - 'all': all raw + engineered features
+    - 'no_s4': all features except anything derived from Sensor_S4
+    - 'important_only': the handful of raw + engineered features most
+      correlated with Reference_Parameter (see methodology.md section 2)
+    - 'engineered_only': only the derived features, no raw columns
+    - 'raw_only': only the raw sensor/operating-condition columns
+    """
+    all_features = get_feature_names(df)
+
+    if feature_set == "all":
+        return all_features
+    elif feature_set == "no_s4":
+        return [f for f in all_features if "Sensor_S4" not in f and "S4" not in f]
+    elif feature_set == "important_only":
+        important = ["Load_Current_A", "Sensor_S2", "Ambient_Temperature_C",
+                     "Power_kVA", "Thermal_Load", "Sensor_Mean"]
+        return [f for f in all_features if any(imp in f for imp in important)]
+    elif feature_set == "engineered_only":
+        raw_set = set(RAW_FEATURE_COLS)
+        return [f for f in all_features if f not in raw_set]
+    elif feature_set == "raw_only":
+        return [f for f in all_features if f in RAW_FEATURE_COLS]
+    else:
+        return all_features
 
 
 def build_feature_pipeline(n_neighbors: int = 7) -> Pipeline:
@@ -260,14 +335,11 @@ def load_and_clean(train_path: str, test_path: str, log_stats: bool = True):
         logger.info(f"Raw train shape: {train.shape}")
         logger.info(f"Raw test shape: {test.shape}")
 
-    # Coerce types
     train = _coerce_types(train)
     test = _coerce_types(test)
 
-    # Align columns
     train, test = _align_columns(train, test)
 
-    # Log initial stats
     if log_stats:
         _log_missing_values(train, "Train (after type coercion)")
         _log_missing_values(test, "Test (after type coercion)")
@@ -278,8 +350,6 @@ def load_and_clean(train_path: str, test_path: str, log_stats: bool = True):
         _detect_outliers_iqr(train, "Train")
         _detect_outliers_iqr(test, "Test")
 
-    # Duplicate flag uses only feature columns -> safe to compute
-    # independently on each dataset (no leakage, see docstring above).
     train["Is_Duplicate_Feature_Row"] = flag_exact_duplicate_features(train)
     test["Is_Duplicate_Feature_Row"] = flag_exact_duplicate_features(test)
 
@@ -289,8 +359,6 @@ def load_and_clean(train_path: str, test_path: str, log_stats: bool = True):
         logger.info(f"Duplicate feature rows (train): {n_dup_train}")
         logger.info(f"Duplicate feature rows (test): {n_dup_test}")
 
-    # Fit the impossible-value-clip + KNN-impute pipeline ONCE on training
-    # features, then transform-only on test features.
     pipeline = build_feature_pipeline(n_neighbors=7)
     train_imputed = pipeline.fit_transform(train[FEATURE_COLS])
     test_imputed = pipeline.transform(test[FEATURE_COLS])
@@ -311,6 +379,14 @@ def load_and_clean(train_path: str, test_path: str, log_stats: bool = True):
     }
 
     return train, test, stats
+
+
+def prepare_features(train: pd.DataFrame, test: pd.DataFrame) -> tuple:
+    """Convenience wrapper: apply `engineer_features` to already-cleaned
+    train/test frames (i.e. the output of `load_and_clean`). Row-wise only,
+    so calling it independently on train and test is leakage-free (see
+    `engineer_features` docstring)."""
+    return engineer_features(train), engineer_features(test)
 
 
 if __name__ == "__main__":
