@@ -17,89 +17,21 @@ from sklearn.model_selection import KFold, RepeatedKFold, cross_validate, train_
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-RAW_FEATURE_COLS = [
-    "Applied_Voltage_kV",
-    "Load_Current_A",
-    "Ambient_Temperature_C",
-    "Test_Duration_min",
-    "Sensor_S1",
-    "Sensor_S2",
-    "Sensor_S3",
-    "Sensor_S4",
-]
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from preprocessing import (
+    RAW_FEATURE_COLS,
+    TARGET_COL,
+    engineer_features,
+    get_feature_names,
+    select_feature_set,
+)
 
 FEATURE_COLS = RAW_FEATURE_COLS
 
-TARGET_COL = "Reference_Parameter"
 RANDOM_STATE = 42
 N_ESTIMATORS = 300
-
-
-def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
-    df_feat = df.copy()
-
-    voltage = df_feat["Applied_Voltage_kV"].astype(float)
-    current = df_feat["Load_Current_A"].astype(float)
-    temp = df_feat["Ambient_Temperature_C"].astype(float)
-    duration = df_feat["Test_Duration_min"].astype(float)
-
-    eps = 1e-6
-    df_feat["Power_kVA"] = voltage * current
-    df_feat["Impedance_proxy"] = voltage / (current + eps)
-    df_feat["Energy_proxy"] = df_feat["Power_kVA"] * (duration / 60.0)
-    df_feat["Thermal_Load"] = current * temp
-    df_feat["Temp_Duration"] = temp * duration
-
-    sensor_cols = ["Sensor_S1", "Sensor_S2", "Sensor_S3", "Sensor_S4"]
-    sensors = df_feat[sensor_cols].astype(float)
-
-    df_feat["Sensor_Mean"] = sensors.mean(axis=1)
-    df_feat["Sensor_Std"] = sensors.std(axis=1).fillna(0.0)
-    df_feat["Sensor_Min"] = sensors.min(axis=1)
-    df_feat["Sensor_Max"] = sensors.max(axis=1)
-    df_feat["Sensor_Spread"] = df_feat["Sensor_Max"] - df_feat["Sensor_Min"]
-
-    df_feat["Sensor_Diff_12"] = df_feat["Sensor_S1"] - df_feat["Sensor_S2"]
-    df_feat["Sensor_Diff_34"] = df_feat["Sensor_S3"] - df_feat["Sensor_S4"]
-    df_feat["Sensor_Ratio_12"] = df_feat["Sensor_S1"] / (df_feat["Sensor_S2"].abs() + eps)
-    df_feat["Sensor_Ratio_34"] = df_feat["Sensor_S3"] / (df_feat["Sensor_S4"].abs() + eps)
-
-    df_feat["Power_Sensor_Ratio"] = df_feat["Power_kVA"] / (df_feat["Sensor_Mean"].abs() + eps)
-
-    return df_feat
-
-
-def get_feature_names(df: pd.DataFrame) -> List[str]:
-    exclude = {TARGET_COL, "Record_ID", "Validity_Label", "Anomaly_Flag", "ID", "Split", "Is_Duplicate_Feature_Row", "Predicted_Invalid", "clf_proba_invalid", "iso_forest_score", "_attention_score"}
-    return [col for col in df.columns if col not in exclude and pd.api.types.is_numeric_dtype(df[col])]
-
-
-def select_feature_set(df: pd.DataFrame, feature_set: str = "all") -> List[str]:
-    """Select feature subset based on configuration.
-    
-    Options:
-    - 'all': All raw features + engineered features
-    - 'no_s4': All features except Sensor_S4
-    - 'important_only': Only top correlated features (Load_Current_A, Sensor_S2, Ambient_Temperature_C)
-    - 'engineered_only': Only engineered features
-    - 'raw_only': Only raw features (no engineering)
-    """
-    all_features = get_feature_names(df)
-    
-    if feature_set == "all":
-        return all_features
-    elif feature_set == "no_s4":
-        return [f for f in all_features if "Sensor_S4" not in f and "S4" not in f]
-    elif feature_set == "important_only":
-        important = ["Load_Current_A", "Sensor_S2", "Ambient_Temperature_C", "Power_kVA", "Thermal_Load", "Sensor_Mean"]
-        return [f for f in all_features if any(imp in f for imp in important)]
-    elif feature_set == "engineered_only":
-        raw_set = set(RAW_FEATURE_COLS)
-        return [f for f in all_features if f not in raw_set]
-    elif feature_set == "raw_only":
-        return [f for f in all_features if f in RAW_FEATURE_COLS]
-    else:
-        return all_features
 
 
 def _candidate_models() -> Dict[str, Any]:
@@ -393,7 +325,6 @@ def evaluate_on_holdout(
         holdout_feat = holdout_subset.copy()
 
     feature_cols = select_feature_set(train_feat, feature_set)
-    # Ensure holdout has same features
     feature_cols = [c for c in feature_cols if c in holdout_feat.columns]
     
     X_train = train_feat[feature_cols].astype(float).values
@@ -569,7 +500,6 @@ def get_model_selection_table(results: pd.DataFrame, include_classification: boo
     
     Returns a formatted string table suitable for terminal output.
     """
-    # Regression metrics
     table_lines = []
     table_lines.append("=" * 78)
     table_lines.append("MODEL SELECTION TABLE")
@@ -582,8 +512,6 @@ def get_model_selection_table(results: pd.DataFrame, include_classification: boo
         mae = row["MAE"]
         rmse = row["RMSE"]
         r2 = row["R2"]
-        # For classification metrics, we need to get them from the classification report
-        # For now, leave blank for pure regression comparison
         accuracy = ""
         f1 = ""
         
@@ -595,14 +523,11 @@ def get_model_selection_table(results: pd.DataFrame, include_classification: boo
     table_lines.append("=" * 78)
     table_lines.append("")
     
-    # Classification metrics summary
     if include_classification:
         table_lines.append("CLASSIFICATION METRICS (on Valid/Invalid):")
         table_lines.append("-" * 78)
         table_lines.append(f"{'Metric':<15} {'Value':>15}")
         table_lines.append("-" * 78)
-        # These would be filled in from the classification report
-        # for now, just note that they're available
         table_lines.append(f"{'Accuracy':<15} (from CV report)")
         table_lines.append(f"{'Precision':<15} (from CV report)")
         table_lines.append(f"{'Recall':<15} (from CV report)")
