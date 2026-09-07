@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from preprocessing import load_and_clean, verify_duplicate_logic, FEATURE_COLS
 from anomaly_detection import build_anomaly_scores
 from model import compare_models, compare_training_subsets, select_and_fit_best, feature_importance, predict, save_model, TARGET_COL, _candidate_models
+from evaluation import save_run
 DEFAULT_TEAM_NAME = 'Neon Nomads'
 
 def parse_args():
@@ -19,6 +20,7 @@ def parse_args():
     p.add_argument('--team-name', default=DEFAULT_TEAM_NAME, help='Team name used for the prediction CSV filename')
     p.add_argument('--data-dir', default=os.path.join(os.path.dirname(__file__), '..', 'data'), help='Directory containing training_data.csv and test_data.csv')
     p.add_argument('--output-dir', default=os.path.join(os.path.dirname(__file__), '..', 'output'), help='Directory to write prediction CSV and summary.json into')
+    p.add_argument('--runs-dir', default=os.path.join(os.path.dirname(__file__), '..', 'runs'), help='Directory to store per-run evaluation history (runs/run_XXX/)')
     return p.parse_args()
 
 def safe_sanitize_team_name(name: str) -> str:
@@ -32,6 +34,7 @@ def main():
     team_name = safe_sanitize_team_name(args.team_name)
     data_dir = args.data_dir
     output_dir = args.output_dir
+    runs_dir = args.runs_dir
     os.makedirs(output_dir, exist_ok=True)
     train_path = os.path.join(data_dir, 'training_data.csv')
     test_path = os.path.join(data_dir, 'test_data.csv')
@@ -163,7 +166,36 @@ def main():
     print(f'  Methodology explanation word count: {summary['methodology_explanation_word_count']} (<=100 required)')
     print(f'  Total pipeline runtime: {summary['pipeline_runtime_seconds']}s')
     print('-' * 72)
-    print('Pipeline completed successfully.')
-    return (summary, pred_df)
+
+    print('\nSaving run history (internal validation, computed only from data/training_data.csv)...')
+    try:
+        raw_params = best_model.get_params() if hasattr(best_model, 'get_params') else None
+        best_params = {k: (v if isinstance(v, (int, float, str, bool, type(None))) else repr(v)) for k, v in raw_params.items()} if raw_params else None
+    except Exception:
+        best_params = None
+    run_dir = save_run(
+        runs_root=runs_dir,
+        pred_csv_path=csv_path,
+        regression_metrics={'MAE': results.iloc[0]['MAE'], 'RMSE': results.iloc[0]['RMSE'], 'R2': results.iloc[0]['R2']},
+        regression_model_name=best_name,
+        regression_model_params=best_params,
+        all_regression_models_compared=results.to_dict(orient='records'),
+        classification_report=cv_report,
+        classifier_comparison=clf_comparison,
+        duplicate_check=dup_check,
+        n_train=n_train,
+        n_test=n_test,
+        n_invalid_test=n_invalid_test,
+        cv_folds_regression=5,
+        cv_folds_classification=5,
+    )
+    run_id = os.path.basename(run_dir)
+    with open(os.path.join(run_dir, 'evaluation.txt')) as f:
+        print(f.read())
+    print(f'Run saved -> {run_dir}')
+    print(f'  ({os.path.join(run_dir, os.path.basename(csv_path))}, evaluation.txt, summary.json)')
+
+    print('\nPipeline completed successfully.')
+    return (summary, pred_df, run_id)
 if __name__ == '__main__':
     main()
