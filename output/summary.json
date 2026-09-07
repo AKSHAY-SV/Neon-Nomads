@@ -1,13 +1,13 @@
 {
-  "generated_at_utc": "2026-09-07T18:27:33.344302+00:00",
+  "generated_at_utc": "2026-09-07T19:44:43.548210+00:00",
   "team_name": "Neon Nomads",
   "records_analysed": 350,
   "abnormal_invalid_count": 39,
   "abnormal_invalid_percentage": 11.14,
   "predicted_reference_parameter": {
-    "minimum": 13.115,
-    "maximum": 57.1654,
-    "average": 26.3593
+    "minimum": 13.1167,
+    "maximum": 57.2579,
+    "average": 26.4235
   },
   "test_ids_requiring_highest_attention": [
     "TST-0258",
@@ -16,68 +16,129 @@
   ],
   "model_selection": {
     "selected_model": "VotingEnsemble",
-    "cv_mae": 0.487,
-    "cv_rmse": 0.8216,
-    "cv_r2": 0.9939,
+    "feature_set": "important_only",
+    "feature_set_comparison": [
+      {
+        "feature_set": "important_only",
+        "n_features": 9,
+        "MAE": 0.4995504028301946,
+        "MAE_std": 0.0687114389097705,
+        "RMSE": 0.8524796321301439,
+        "RMSE_std": 0.20338625187489884,
+        "R2": 0.9936367910076843,
+        "R2_std": 0.0026470198369734415
+      },
+      {
+        "feature_set": "raw_only",
+        "n_features": 8,
+        "MAE": 0.5049274426579113,
+        "MAE_std": 0.06734622747365486,
+        "RMSE": 0.9071871029199408,
+        "RMSE_std": 0.22656059643212517,
+        "R2": 0.9927060893451604,
+        "R2_std": 0.0034385249452939526
+      },
+      {
+        "feature_set": "all",
+        "n_features": 29,
+        "MAE": 0.5099877854339658,
+        "MAE_std": 0.05766311249544101,
+        "RMSE": 0.8763678828273289,
+        "RMSE_std": 0.18340440859357404,
+        "R2": 0.9933200914133963,
+        "R2_std": 0.002501835198427128
+      },
+      {
+        "feature_set": "no_s4",
+        "n_features": 28,
+        "MAE": 0.5120009855932729,
+        "MAE_std": 0.06329910866205025,
+        "RMSE": 0.8865931842794634,
+        "RMSE_std": 0.19078352197228474,
+        "R2": 0.9931540561978471,
+        "R2_std": 0.0026173224041402933
+      },
+      {
+        "feature_set": "engineered_only",
+        "n_features": 21,
+        "MAE": 0.9608568457164731,
+        "MAE_std": 0.09068376482378435,
+        "RMSE": 1.5316686801233401,
+        "RMSE_std": 0.22726273116518053,
+        "R2": 0.9800360426553236,
+        "R2_std": 0.00426076909084647
+      }
+    ],
+    "holdout_evaluation": {
+      "MAE": 0.504271643742415,
+      "RMSE": 0.710350708354972,
+      "R2": 0.9940626863004405,
+      "dev_size": 779,
+      "holdout_size": 87,
+      "holdout_ratio": 0.1
+    },
+    "cv_mae": 0.51,
+    "cv_rmse": 0.8764,
+    "cv_r2": 0.9933,
     "all_models_compared": [
       {
         "model": "VotingEnsemble",
-        "MAE": 0.48700000456011805,
-        "MAE_std": 0.03370284414418226,
-        "RMSE": 0.8216219477383845,
-        "RMSE_std": 0.14990130998615267,
-        "R2": 0.9939019414934395,
-        "R2_std": 0.002302505765777306,
+        "MAE": 0.5099877854339661,
+        "MAE_std": 0.0576631124954409,
+        "RMSE": 0.876367882827329,
+        "RMSE_std": 0.18340440859357393,
+        "R2": 0.9933200914133963,
+        "R2_std": 0.002501835198427128,
         "cv_folds": 5
       },
       {
         "model": "GradientBoosting",
-        "MAE": 0.5113257395614911,
-        "MAE_std": 0.015793400913739694,
-        "RMSE": 0.7820728435886217,
-        "RMSE_std": 0.09190238256089814,
-        "R2": 0.9945860950554886,
-        "R2_std": 0.0014541696331353525,
+        "MAE": 0.5228464867033005,
+        "MAE_std": 0.03852279335534422,
+        "RMSE": 0.7853788040934693,
+        "RMSE_std": 0.11852107466618225,
+        "R2": 0.9946562914046077,
+        "R2_std": 0.0015942199252068578,
         "cv_folds": 5
       },
       {
         "model": "HistGradientBoosting",
-        "MAE": 0.59846479603476,
-        "MAE_std": 0.02639809187735352,
-        "RMSE": 0.9814759699689428,
-        "RMSE_std": 0.09813285537956616,
-        "R2": 0.991510393130978,
-        "R2_std": 0.0018655886908787692,
+        "MAE": 0.5949325573385157,
+        "MAE_std": 0.051387427770260174,
+        "RMSE": 1.0020762105144099,
+        "RMSE_std": 0.16953243102317542,
+        "R2": 0.991386620406519,
+        "R2_std": 0.0024385521448187382,
         "cv_folds": 5
       },
       {
         "model": "ExtraTrees",
-        "MAE": 0.6331292102437935,
-        "MAE_std": 0.06834090916912272,
-        "RMSE": 1.1665296311814255,
-        "RMSE_std": 0.21825270592973822,
-        "R2": 0.98771973658805,
-        "R2_std": 0.004504628003682447,
+        "MAE": 0.6869604589905339,
+        "MAE_std": 0.09877306547935734,
+        "RMSE": 1.251003668771982,
+        "RMSE_std": 0.30584364508580336,
+        "R2": 0.9863016628834362,
+        "R2_std": 0.005708393822422314,
         "cv_folds": 5
       },
       {
         "model": "RandomForest",
-        "MAE": 0.6705799195531335,
-        "MAE_std": 0.04518417132869302,
-        "RMSE": 1.2171337076948494,
-        "RMSE_std": 0.16736558435673665,
-        "R2": 0.9868164186917511,
-        "R2_std": 0.0036646669000200255,
+        "MAE": 0.7421584039764012,
+        "MAE_std": 0.08825911488960118,
+        "RMSE": 1.340993596015534,
+        "RMSE_std": 0.2748391867983226,
+        "R2": 0.984379117796179,
+        "R2_std": 0.005795444848069019,
         "cv_folds": 5
       },
       {
         "model": "Ridge",
-        "MAE": 2.19986659537581,
-        "MAE_std": 0.09586386890795014,
-        "RMSE": 2.6791398158265554,
-        "RMSE_std": 0.15363544280824748,
-        "R2": 0.9373512122706462,
-        "R2_std": 0.007687876316635646,
+        "MAE": 2.2679030473595527,
+        "MAE_std": 0.11350822961521166,
+        "RMSE": 2.7566430743536197,
+        "RMSE_std": 0.1750252578574136,
+        "R2": 0.9356405853199334,
+        "R2_std": 0.0034620182996157904,
         "cv_folds": 5
       }
     ],
@@ -85,15 +146,15 @@
     "training_subset_comparison": {
       "valid_only": {
         "n_rows": 866,
-        "MAE": 0.487000004560118,
-        "RMSE": 0.8216219477383845,
-        "R2": 0.9939019414934395
+        "MAE": 0.538968053959683,
+        "RMSE": 0.9480901417335662,
+        "R2": 0.9919384303135895
       },
       "all_rows": {
         "n_rows": 1000,
-        "MAE": 0.720906845295094,
-        "RMSE": 1.9217381979785415,
-        "R2": 0.9629810849326791
+        "MAE": 0.7775805024754204,
+        "RMSE": 2.0895529488731133,
+        "R2": 0.961488345770554
       }
     },
     "feature_ablation": {}
@@ -171,5 +232,5 @@
   },
   "methodology_explanation": "Imputer/consistency-lines/scaler/Isolation-Forest/classifier fit only on training folds (no leakage); test data transformed only. Invalid records flagged via physical-consistency checks, duplicate-row detection, Isolation Forest and a classifier, threshold chosen by out-of-fold F1. Reference_Parameter predicted with the best cross-validated regressor (VotingEnsemble) trained on verified rows.",
   "methodology_explanation_word_count": 42,
-  "pipeline_runtime_seconds": 201.92
+  "pipeline_runtime_seconds": 215.54
 }
