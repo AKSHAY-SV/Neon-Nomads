@@ -1,76 +1,12 @@
-"""
-anomaly_detection.py
----------------------
-Task 1: identify abnormal / invalid records.
-
-Fix vs previous version (this is the important part - read before editing)
-----------------------------------------------------------------------------
-The previous version fit the physical-consistency lines, the StandardScaler
-and the Isolation Forest on the WHOLE training set ONE TIME, and only then
-ran cross-validation on the classifier. That means every fold's "held-out"
-rows had already influenced the residual lines, the scaler's mean/std and
-the Isolation Forest's learned tree structure - a real leakage path even
-though the *labels* were never touched directly, because those upstream
-transforms use the feature values of rows that later show up in the
-validation fold.
-
-This version fits EVERYTHING (consistency lines, scaler, Isolation Forest,
-classifier) freshly inside each cross-validation fold, using only that
-fold's training rows, and only ever calls `.transform()`/`.predict()` on
-the held-out fold. Reported CV metrics are computed purely from these
-out-of-fold predictions, so they are genuinely unbiased estimates of
-performance on unseen data - not just "no label leakage" but "no feature
-statistics leakage" either.
-
-Duplicate-feature-row flagging is the one signal that is safe to compute
-globally (see preprocessing.py's `flag_exact_duplicate_features` docstring):
-it uses no label information and is a simple structural comparison against
-the SAME dataframe's own rows, so it generalises to test data without ever
-referencing training rows.
-
-Signals combined (kept from the original design, since they were the
-useful part):
-  a) Physical-consistency residual z-scores (Sensor_S1/S3 vs Voltage,
-     Sensor_S2 vs Current) - fit only on the fold's Valid training rows.
-  b) Duplicate-feature-row flag (global, label-free, see above).
-  c) Isolation Forest anomaly score - fit only on the fold's training rows.
-  d) Gradient Boosting classifier trained on historical Validity_Label
-     within the fold, using (a)-(c) as engineered features.
-
-Decision threshold
--------------------
-Rather than hard-coding 0.5, the classifier's out-of-fold probabilities are
-swept across a grid of thresholds and the threshold that maximises F1 on
-the OUT-OF-FOLD predictions (never on the test set, which has no labels
-anyway) is selected. This threshold is then used, together with the two
-label-free hard-override rules below, to make the final decision when the
-pipeline is refit on the full training set and applied to test data.
-
-Hard overrides (kept from before, but now data-driven rather than a magic
-constant):
-  - duplicate feature row -> Invalid (100% empirical rate in training)
-  - |physical-consistency residual z| beyond a threshold derived from the
-    OBSERVED maximum residual z-score among historically-Valid rows (plus a
-    safety margin) -> Invalid. This avoids inventing an arbitrary z cutoff:
-    it is set just above what genuinely-valid data ever produces.
-
-Genuine operating-regime changes vs sensor errors
----------------------------------------------------
-A record that is unusual in raw magnitude (e.g. very high voltage) but
-whose sensors still track the expected Voltage/Current relationship will
-have SMALL physical-consistency residuals and will not trigger the hard
-overrides; it can only be flagged by the learned classifier if the
-historical data contains similar patterns among labelled Invalid rows.
-This is intentional: the brief explicitly requires that "an unusual value
-is not necessarily an invalid value" - unusual-but-physically-consistent
-combinations are treated as genuine regime changes, not anomalies.
-"""
-
 from __future__ import annotations
+import itertools
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import IsolationForest, GradientBoostingClassifier
+from sklearn.ensemble import (IsolationForest, GradientBoostingClassifier,
+                               RandomForestClassifier, HistGradientBoostingClassifier)
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold
+from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (accuracy_score, precision_score, recall_score,
                               f1_score, roc_auc_score, confusion_matrix)
@@ -80,10 +16,8 @@ FEATURE_COLS = [
     "Test_Duration_min", "Sensor_S1", "Sensor_S2", "Sensor_S3", "Sensor_S4",
 ]
 
-# Physical-consistency relationships discovered during EDA (see explore.py):
-# (x_col, y_col) pairs where y is expected to be approximately linear in x
-# for physically-valid records.
-CONSISTENCY_PAIRS = [
+
+BASE_CONSISTENCY_PAIRS = [
     ("Applied_Voltage_kV", "Sensor_S1"),
     ("Applied_Voltage_kV", "Sensor_S3"),
     ("Load_Current_A", "Sensor_S2"),
@@ -91,15 +25,24 @@ CONSISTENCY_PAIRS = [
 
 RANDOM_STATE = 42
 N_SPLITS = 5
-ISO_N_ESTIMATORS = 200          # reduced from 300 for speed, negligible score impact
-GB_N_ESTIMATORS = 150           # kept modest for speed on ~800-row folds
-RESIDUAL_Z_MARGIN = 1.5         # safety margin added on top of the observed max Valid |z|
-THRESHOLD_GRID = np.round(np.arange(0.10, 0.91, 0.05), 2)
+ISO_N_ESTIMATORS = 200
+GB_N_ESTIMATORS = 150
+RESIDUAL_Z_MARGIN = 1.5
+THRESHOLD_GRID = np.round(np.arange(0.05, 0.96, 0.02), 2)
 
 
-# ---------------------------------------------------------------------
-# Physical-consistency feature engineering (fit only on given rows)
-# ---------------------------------------------------------------------
+EXTRA_PAIR_CORR_THRESHOLD = 0.6
+MAX_EXTRA_PAIRS = 3
+
+
+INNER_TUNE_SPLITS = 3
+IF_PARAM_GRID = [
+    {"n_estimators": 200, "max_features": 1.0, "contamination": "auto"},
+    {"n_estimators": 300, "max_features": 1.0, "contamination": "auto"},
+    {"n_estimators": 200, "max_features": 0.75, "contamination": "auto"},
+]
+
+
 def _fit_consistency_line(valid_rows: pd.DataFrame, x: str, y: str):
     mask = valid_rows[[x, y]].notna().all(axis=1)
     slope, intercept = np.polyfit(valid_rows.loc[mask, x], valid_rows.loc[mask, y], 1)
@@ -108,23 +51,41 @@ def _fit_consistency_line(valid_rows: pd.DataFrame, x: str, y: str):
     max_abs_z = (resid / (resid_std if resid_std > 0 else 1.0)).abs().max()
     return slope, intercept, resid_std, max_abs_z
 
+def _candidate_extra_pairs():
+    base_set = {frozenset(p) for p in BASE_CONSISTENCY_PAIRS}
+    return [(x, y) for x, y in itertools.combinations(FEATURE_COLS, 2)
+            if frozenset((x, y)) not in base_set]
 
-def fit_physical_consistency(train_fold: pd.DataFrame, validity_col="Validity_Label"):
-    """Fit consistency lines using ONLY Valid rows within the given
-    (fold-)training data. Returns a dict keyed by (x, y) ->
-    (slope, intercept, resid_std, max_abs_z_on_valid)."""
+def select_consistency_pairs(valid_rows: pd.DataFrame, use_extended_pairs: bool = True,
+                              corr_threshold: float = EXTRA_PAIR_CORR_THRESHOLD,
+                              max_extra: int = MAX_EXTRA_PAIRS):
+    pairs = list(BASE_CONSISTENCY_PAIRS)
+    if not use_extended_pairs:
+        return pairs
+    scored = []
+    for x, y in _candidate_extra_pairs():
+        sub = valid_rows[[x, y]].dropna()
+        if len(sub) < 20:
+            continue
+        r = sub[x].corr(sub[y])
+        if pd.notna(r) and abs(r) >= corr_threshold:
+            scored.append((abs(r), x, y))
+    scored.sort(reverse=True)
+    for _, x, y in scored[:max_extra]:
+        pairs.append((x, y))
+    return pairs
+
+def fit_physical_consistency(train_fold: pd.DataFrame, validity_col="Validity_Label",
+                              use_extended_pairs: bool = True):
     valid_rows = (train_fold[train_fold[validity_col] == "Valid"]
                   if validity_col in train_fold.columns else train_fold)
+    pairs = select_consistency_pairs(valid_rows, use_extended_pairs=use_extended_pairs)
     fitted = {}
-    for x, y in CONSISTENCY_PAIRS:
+    for x, y in pairs:
         fitted[(x, y)] = _fit_consistency_line(valid_rows, x, y)
     return fitted
 
-
 def add_consistency_features(df: pd.DataFrame, fitted_lines: dict) -> pd.DataFrame:
-    """Adds one z-scored residual column per consistency pair using
-    parameters fit elsewhere (never refit here) - safe to call on
-    held-out/validation/test data."""
     df = df.copy()
     for (x, y), (slope, intercept, resid_std, _max_z) in fitted_lines.items():
         pred = slope * df[x] + intercept
@@ -133,27 +94,79 @@ def add_consistency_features(df: pd.DataFrame, fitted_lines: dict) -> pd.DataFra
         df[f"resid_z_{y}_vs_{x}"] = z
     return df
 
-
 def _resid_z_cols(fitted_lines):
     return [f"resid_z_{y}_vs_{x}" for (x, y) in fitted_lines.keys()]
 
-
 def _hard_override_threshold(fitted_lines: dict) -> float:
-    """Data-driven residual-z override threshold: the largest |z| ever
-    observed among historically-Valid rows (across all consistency pairs),
-    plus a fixed safety margin, so we never flag typical Valid behaviour."""
     max_zs = [v[3] for v in fitted_lines.values()]
     return max(max_zs) + RESIDUAL_Z_MARGIN
 
 
-# ---------------------------------------------------------------------
-# One "unit of work": fit everything on a training subset, score a
-# (possibly disjoint) evaluation subset. Used both inside CV folds and
-# for the final full-train -> test pass, so the exact same logic runs in
-# both places (no separate/inconsistent "production" code path).
-# ---------------------------------------------------------------------
-def _fit_and_score(train_subset: pd.DataFrame, eval_subset: pd.DataFrame):
-    fitted_lines = fit_physical_consistency(train_subset)
+def _tune_isolation_forest(X: np.ndarray, y: np.ndarray, random_state: int = RANDOM_STATE,
+                            inner_splits: int = INNER_TUNE_SPLITS, grid=None):
+    grid = grid if grid is not None else IF_PARAM_GRID
+    n_pos, n_neg = int(y.sum()), int(len(y) - y.sum())
+    if n_pos == 0 or n_neg == 0:
+        return grid[0]
+
+    empirical_rate = float(np.clip(y.mean(), 0.01, 0.5))
+    full_grid = grid + [{"n_estimators": 200, "max_features": 1.0, "contamination": empirical_rate}]
+
+    n_splits = max(2, min(inner_splits, n_pos, n_neg))
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+
+    best_params, best_score = full_grid[0], -1.0
+    for params in full_grid:
+        aucs = []
+        for tr_idx, val_idx in skf.split(X, y):
+            if len(np.unique(y[val_idx])) < 2:
+                continue
+            iso = IsolationForest(random_state=random_state, n_jobs=-1, **params)
+            iso.fit(X[tr_idx])
+            score = -iso.decision_function(X[val_idx])
+            aucs.append(roc_auc_score(y[val_idx], score))
+        if aucs:
+            mean_auc = float(np.mean(aucs))
+            if mean_auc > best_score:
+                best_score, best_params = mean_auc, params
+    return best_params
+
+
+def _candidate_classifier_builders():
+    builders = {
+        "GradientBoosting": lambda: GradientBoostingClassifier(
+            n_estimators=GB_N_ESTIMATORS, random_state=RANDOM_STATE),
+        "RandomForest": lambda: RandomForestClassifier(
+            n_estimators=300, min_samples_leaf=2, class_weight="balanced",
+            random_state=RANDOM_STATE, n_jobs=-1),
+        "LogisticRegression": lambda: Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", LogisticRegression(max_iter=3000, class_weight="balanced",
+                                        random_state=RANDOM_STATE)),
+        ]),
+        "HistGradientBoosting": lambda: HistGradientBoostingClassifier(random_state=RANDOM_STATE),
+    }
+    try:
+        from xgboost import XGBClassifier
+        builders["XGBoost"] = lambda: XGBClassifier(
+            n_estimators=200, max_depth=4, learning_rate=0.05,
+            subsample=0.9, colsample_bytree=0.9, random_state=RANDOM_STATE,
+            n_jobs=-1, eval_metric="logloss", verbosity=0)
+    except ImportError:
+        pass
+    try:
+        from lightgbm import LGBMClassifier
+        builders["LightGBM"] = lambda: LGBMClassifier(
+            n_estimators=200, learning_rate=0.05, random_state=RANDOM_STATE, verbosity=-1)
+    except ImportError:
+        pass
+    return builders
+
+
+def _fit_and_score(train_subset: pd.DataFrame, eval_subset: pd.DataFrame,
+                    classifier_builder=None, use_extended_pairs: bool = True,
+                    tune_iso: bool = True):
+    fitted_lines = fit_physical_consistency(train_subset, use_extended_pairs=use_extended_pairs)
     train_feat = add_consistency_features(train_subset, fitted_lines)
     eval_feat = add_consistency_features(eval_subset, fitted_lines)
     resid_cols = _resid_z_cols(fitted_lines)
@@ -163,51 +176,74 @@ def _fit_and_score(train_subset: pd.DataFrame, eval_subset: pd.DataFrame):
     train_scaled = scaler.fit_transform(train_feat[iso_cols])
     eval_scaled = scaler.transform(eval_feat[iso_cols])
 
-    iso = IsolationForest(n_estimators=ISO_N_ESTIMATORS, contamination="auto",
-                           random_state=RANDOM_STATE, n_jobs=1)
+    y_train_labels = (train_feat["Validity_Label"] == "Invalid").astype(int).values
+
+    if tune_iso:
+        if_params = _tune_isolation_forest(train_scaled, y_train_labels)
+    else:
+        if_params = {"n_estimators": ISO_N_ESTIMATORS, "max_features": 1.0, "contamination": "auto"}
+    iso = IsolationForest(random_state=RANDOM_STATE, n_jobs=-1, **if_params)
     iso.fit(train_scaled)
     train_feat["iso_forest_score"] = -iso.decision_function(train_scaled)
     eval_feat["iso_forest_score"] = -iso.decision_function(eval_scaled)
 
     clf_cols = FEATURE_COLS + resid_cols + ["iso_forest_score", "Is_Duplicate_Feature_Row"]
-    y_train = (train_feat["Validity_Label"] == "Invalid").astype(int)
     X_train = train_feat[clf_cols].astype(float).values
     X_eval = eval_feat[clf_cols].astype(float).values
 
-    clf = GradientBoostingClassifier(n_estimators=GB_N_ESTIMATORS, random_state=RANDOM_STATE)
-    clf.fit(X_train, y_train)
+    if classifier_builder is None:
+        classifier_builder = lambda: GradientBoostingClassifier(
+            n_estimators=GB_N_ESTIMATORS, random_state=RANDOM_STATE)
+    clf = classifier_builder()
+    clf.fit(X_train, y_train_labels)
     eval_proba = clf.predict_proba(X_eval)[:, 1]
 
     override_z = _hard_override_threshold(fitted_lines)
-    return eval_feat, eval_proba, override_z, fitted_lines, scaler, iso, clf, clf_cols, resid_cols
+    return (eval_feat, eval_proba, override_z, fitted_lines, scaler, iso, clf,
+            clf_cols, resid_cols, if_params)
 
-
-def _best_threshold_by_f1(y_true, proba, grid=THRESHOLD_GRID):
-    best_t, best_f1 = 0.5, -1.0
+def _best_threshold_generic(y_true, score, grid):
+    best_t, best_f1 = float(grid[0]), -1.0
     for t in grid:
-        pred = (proba >= t).astype(int)
+        pred = (score >= t).astype(int)
         f1 = f1_score(y_true, pred, zero_division=0)
         if f1 > best_f1:
-            best_f1, best_t = f1, t
-    return float(best_t), float(best_f1)
+            best_f1, best_t = f1, float(t)
+    return best_t, best_f1
 
+def _best_threshold_by_f1(y_true, proba, grid=THRESHOLD_GRID):
+    return _best_threshold_generic(y_true, proba, grid)
 
-def cross_validate_anomaly_detector(train: pd.DataFrame, n_splits=N_SPLITS):
-    """Genuine out-of-fold cross-validation: every fitted object (consistency
-    lines, scaler, Isolation Forest, classifier) is fit ONLY on that fold's
-    training rows and applied (transform/predict only) to the held-out
-    fold. Returns (oof_proba, cv_report, chosen_threshold)."""
+def cross_validate_anomaly_detector(train: pd.DataFrame, n_splits=N_SPLITS,
+                                     classifier_builder=None,
+                                     use_extended_pairs: bool = True,
+                                     tune_iso: bool = True):
     y = (train["Validity_Label"] == "Invalid").astype(int).values
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
 
-    oof_proba = np.zeros(len(train))
-    for fold_i, (tr_idx, val_idx) in enumerate(skf.split(train, y)):
+    n = len(train)
+    oof_proba = np.zeros(n)
+    oof_max_resid_z = np.zeros(n)
+    oof_hard_phys = np.zeros(n, dtype=bool)
+    oof_dup = np.zeros(n, dtype=bool)
+    oof_iso_score = np.zeros(n)
+
+    for tr_idx, val_idx in skf.split(train, y):
         train_fold = train.iloc[tr_idx].reset_index(drop=True)
         val_fold = train.iloc[val_idx].reset_index(drop=True)
-        _, val_proba, *_ = _fit_and_score(train_fold, val_fold)
-        oof_proba[val_idx] = val_proba
+        result = _fit_and_score(train_fold, val_fold, classifier_builder=classifier_builder,
+                                 use_extended_pairs=use_extended_pairs, tune_iso=tune_iso)
+        val_feat, val_proba, override_z, fitted_lines = result[0], result[1], result[2], result[3]
+        resid_cols = _resid_z_cols(fitted_lines)
 
-    chosen_threshold, best_oof_f1 = _best_threshold_by_f1(y, oof_proba)
+        oof_proba[val_idx] = val_proba
+        max_z = val_feat[resid_cols].abs().max(axis=1).values
+        oof_max_resid_z[val_idx] = max_z
+        oof_hard_phys[val_idx] = max_z >= override_z
+        oof_dup[val_idx] = val_feat["Is_Duplicate_Feature_Row"].astype(bool).values
+        oof_iso_score[val_idx] = val_feat["iso_forest_score"].values
+
+    chosen_threshold, _ = _best_threshold_by_f1(y, oof_proba)
     oof_pred = (oof_proba >= chosen_threshold).astype(int)
 
     cv_report = {
@@ -221,16 +257,72 @@ def cross_validate_anomaly_detector(train: pd.DataFrame, n_splits=N_SPLITS):
         "threshold_selection_metric": "F1 on out-of-fold predictions",
         "n_folds": n_splits,
     }
-    return oof_proba, cv_report, chosen_threshold
+    oof_signals = {
+        "max_resid_z": oof_max_resid_z,
+        "iso_score": oof_iso_score,
+        "duplicate_flag": oof_dup,
+        "hard_phys_flag": oof_hard_phys,
+    }
+    return oof_proba, cv_report, chosen_threshold, oof_signals
 
+def compare_classifiers(train: pd.DataFrame, n_splits=N_SPLITS,
+                         use_extended_pairs: bool = True, tune_iso: bool = True) -> pd.DataFrame:
+    rows = []
+    for name, builder in _candidate_classifier_builders().items():
+        _, cv_report, chosen_threshold, _ = cross_validate_anomaly_detector(
+            train, n_splits=n_splits, classifier_builder=builder,
+            use_extended_pairs=use_extended_pairs, tune_iso=tune_iso)
+        rows.append({
+            "classifier": name,
+            "accuracy": cv_report["accuracy"],
+            "precision": cv_report["precision"],
+            "recall": cv_report["recall"],
+            "f1": cv_report["f1"],
+            "roc_auc": cv_report["roc_auc"],
+            "chosen_threshold": chosen_threshold,
+        })
+    return pd.DataFrame(rows).sort_values("roc_auc", ascending=False).reset_index(drop=True)
 
-def fit_final_and_predict_test(train: pd.DataFrame, test: pd.DataFrame, chosen_threshold: float):
-    """Refit consistency lines / scaler / Isolation Forest / classifier on
-    the FULL training set (this is the standard final step after CV has
-    already given us an unbiased performance estimate and a chosen
-    threshold) and apply them to the test set."""
-    test_feat, test_proba, override_z, fitted_lines, scaler, iso, clf, clf_cols, resid_cols = \
-        _fit_and_score(train, test)
+def ablation_study(train: pd.DataFrame, n_splits=N_SPLITS, classifier_builder=None) -> pd.DataFrame:
+    y = (train["Validity_Label"] == "Invalid").astype(int).values
+    oof_proba, _, chosen_threshold, sig = cross_validate_anomaly_detector(
+        train, n_splits=n_splits, classifier_builder=classifier_builder)
+
+    def _metrics(pred, proba=None):
+        out = {
+            "accuracy": accuracy_score(y, pred),
+            "precision": precision_score(y, pred, zero_division=0),
+            "recall": recall_score(y, pred, zero_division=0),
+            "f1": f1_score(y, pred, zero_division=0),
+        }
+        out["roc_auc"] = roc_auc_score(y, proba) if proba is not None and len(np.unique(y)) > 1 else np.nan
+        return out
+
+    rows = {}
+
+    pred_phys = sig["hard_phys_flag"] | sig["duplicate_flag"]
+    rows["physical_consistency_+_duplicate"] = _metrics(pred_phys, sig["max_resid_z"])
+
+    iso_grid = np.unique(np.quantile(sig["iso_score"], np.linspace(0.5, 0.995, 60)))
+    iso_t, _ = _best_threshold_generic(y, sig["iso_score"], iso_grid)
+    pred_iso = (sig["iso_score"] >= iso_t).astype(int)
+    rows["isolation_forest_only"] = _metrics(pred_iso, sig["iso_score"])
+
+    pred_clf = (oof_proba >= chosen_threshold).astype(int)
+    rows["classifier_only"] = _metrics(pred_clf, oof_proba)
+
+    pred_full = (sig["duplicate_flag"] | sig["hard_phys_flag"] | (oof_proba >= chosen_threshold)).astype(int)
+    rows["combined_all_signals"] = _metrics(pred_full, oof_proba)
+
+    return pd.DataFrame(rows).T
+
+def fit_final_and_predict_test(train: pd.DataFrame, test: pd.DataFrame, chosen_threshold: float,
+                                classifier_builder=None, use_extended_pairs: bool = True,
+                                tune_iso: bool = True):
+    result = _fit_and_score(train, test, classifier_builder=classifier_builder,
+                             use_extended_pairs=use_extended_pairs, tune_iso=tune_iso)
+    (test_feat, test_proba, override_z, fitted_lines, scaler, iso, clf,
+     clf_cols, resid_cols, if_params) = result
 
     train_feat = add_consistency_features(train, fitted_lines)
     train_iso_cols = FEATURE_COLS + resid_cols
@@ -250,24 +342,38 @@ def fit_final_and_predict_test(train: pd.DataFrame, test: pd.DataFrame, chosen_t
     train_feat["Predicted_Invalid"] = decide(train_feat)
     test_feat["Predicted_Invalid"] = decide(test_feat)
 
-    meta = {"override_z_threshold": float(override_z), "resid_cols": resid_cols}
+    meta = {
+        "override_z_threshold": float(override_z),
+        "resid_cols": resid_cols,
+        "isolation_forest_params": if_params,
+    }
     return train_feat, test_feat, meta
 
+def build_anomaly_scores(train: pd.DataFrame, test: pd.DataFrame, n_splits=N_SPLITS,
+                          auto_select_classifier: bool = True,
+                          use_extended_pairs: bool = True, tune_iso: bool = True):
+    classifier_builder = None
+    clf_comparison = None
+    selected_classifier = "GradientBoosting"
+    if auto_select_classifier:
+        clf_comparison = compare_classifiers(train, n_splits=n_splits,
+                                              use_extended_pairs=use_extended_pairs,
+                                              tune_iso=tune_iso)
+        selected_classifier = clf_comparison.iloc[0]["classifier"]
+        classifier_builder = _candidate_classifier_builders()[selected_classifier]
 
-def build_anomaly_scores(train: pd.DataFrame, test: pd.DataFrame):
-    """
-    Full anomaly-detection stage: (1) genuinely out-of-fold cross-validation
-    against historical Validity_Label to report unbiased metrics and choose
-    a decision threshold, then (2) refit on the full training set and
-    apply to the test set.
+    oof_proba, cv_report, chosen_threshold, oof_signals = cross_validate_anomaly_detector(
+        train, n_splits=n_splits, classifier_builder=classifier_builder,
+        use_extended_pairs=use_extended_pairs, tune_iso=tune_iso)
 
-    Returns (train_out, test_out, cv_report).
-    """
-    oof_proba, cv_report, chosen_threshold = cross_validate_anomaly_detector(train)
-    train_out, test_out, meta = fit_final_and_predict_test(train, test, chosen_threshold)
+    train_out, test_out, meta = fit_final_and_predict_test(
+        train, test, chosen_threshold, classifier_builder=classifier_builder,
+        use_extended_pairs=use_extended_pairs, tune_iso=tune_iso)
+
     cv_report["override_z_threshold"] = meta["override_z_threshold"]
-    return train_out, test_out, cv_report
-
+    cv_report["selected_classifier"] = selected_classifier
+    cv_report["isolation_forest_params"] = meta["isolation_forest_params"]
+    return train_out, test_out, cv_report, clf_comparison
 
 if __name__ == "__main__":
     import sys
@@ -279,9 +385,50 @@ if __name__ == "__main__":
     for k, v in verify_duplicate_logic(tr).items():
         print(f"  {k}: {v}")
 
-    tr_out, te_out, report = build_anomaly_scores(tr, te)
-    print("\nGenuinely out-of-fold CV report vs historical Validity_Label:")
-    for k, v in report.items():
-        print(f"  {k}: {v}")
-    print("\nPredicted invalid count (train, full-fit):", int(tr_out["Predicted_Invalid"].sum()))
+
+    print("\n" + "=" * 70)
+    print("BEFORE (previous design): 3 fixed pairs, fixed Isolation Forest, "
+          "GradientBoostingClassifier")
+    print("=" * 70)
+    gb_builder = lambda: GradientBoostingClassifier(n_estimators=GB_N_ESTIMATORS, random_state=RANDOM_STATE)
+    _, baseline_report, baseline_threshold, _ = cross_validate_anomaly_detector(
+        tr, classifier_builder=gb_builder, use_extended_pairs=False, tune_iso=False)
+    for k in ["accuracy", "precision", "recall", "f1", "roc_auc"]:
+        print(f"  {k:>10s}: {baseline_report[k]:.4f}")
+    print(f"  chosen_threshold: {baseline_threshold}")
+
+
+    print("\n" + "=" * 70)
+    print("Classifier comparison (data-driven consistency pairs + tuned Isolation Forest)")
+    print("=" * 70)
+    clf_comparison = compare_classifiers(tr)
+    print(clf_comparison.to_string(index=False))
+    best_name = clf_comparison.iloc[0]["classifier"]
+    best_builder = _candidate_classifier_builders()[best_name]
+
+
+    print("\n" + "=" * 70)
+    print(f"AFTER (improved design, selected classifier = {best_name})")
+    print("=" * 70)
+    _, improved_report, improved_threshold, _ = cross_validate_anomaly_detector(
+        tr, classifier_builder=best_builder, use_extended_pairs=True, tune_iso=True)
+    for k in ["accuracy", "precision", "recall", "f1", "roc_auc"]:
+        print(f"  {k:>10s}: {improved_report[k]:.4f}")
+    print(f"  chosen_threshold: {improved_threshold}")
+
+
+    print("\n" + "=" * 70)
+    print("Ablation study (OOF, improved features + selected classifier)")
+    print("=" * 70)
+    ablation = ablation_study(tr, classifier_builder=best_builder)
+    print(ablation.to_string())
+
+
+    print("\n" + "=" * 70)
+    print("Final fit on full training set -> test set predictions")
+    print("=" * 70)
+    tr_out, te_out, meta = fit_final_and_predict_test(
+        tr, te, improved_threshold, classifier_builder=best_builder)
+    print("Isolation Forest params selected on full training data:", meta["isolation_forest_params"])
+    print("Predicted invalid count (train, full-fit):", int(tr_out["Predicted_Invalid"].sum()))
     print("Predicted invalid count (test):", int(te_out["Predicted_Invalid"].sum()))
