@@ -1,13 +1,13 @@
 {
-  "generated_at_utc": "2026-09-06T18:49:26.167169+00:00",
+  "generated_at_utc": "2026-09-07T16:54:53.225036+00:00",
   "team_name": "Neon Nomads",
   "records_analysed": 350,
-  "abnormal_invalid_count": 41,
-  "abnormal_invalid_percentage": 11.71,
+  "abnormal_invalid_count": 39,
+  "abnormal_invalid_percentage": 11.14,
   "predicted_reference_parameter": {
-    "minimum": 13.103,
-    "maximum": 57.2339,
-    "average": 26.3845
+    "minimum": 13.115,
+    "maximum": 57.1654,
+    "average": 26.3593
   },
   "test_ids_requiring_highest_attention": [
     "TST-0258",
@@ -16,129 +16,207 @@
   ],
   "model_selection": {
     "selected_model": "VotingEnsemble",
-    "cv_mae": 0.4926,
-    "cv_rmse": 0.8257,
+    "cv_mae": 0.487,
+    "cv_rmse": 0.8216,
     "cv_r2": 0.9939,
     "all_models_compared": [
       {
         "model": "VotingEnsemble",
-        "MAE": 0.49263836633073377,
-        "MAE_std": 0.024641675629037865,
-        "RMSE": 0.8257167230868768,
-        "RMSE_std": 0.1442390433404198,
-        "R2": 0.9938586648949379,
-        "R2_std": 0.0021714519094077124
+        "MAE": 0.48700000456011827,
+        "MAE_std": 0.03370284414418221,
+        "RMSE": 0.8216219477383847,
+        "RMSE_std": 0.14990130998615253,
+        "R2": 0.9939019414934395,
+        "R2_std": 0.002302505765777306,
+        "cv_folds": 5
       },
       {
         "model": "GradientBoosting",
-        "MAE": 0.5060124878838399,
-        "MAE_std": 0.02200961464732751,
-        "RMSE": 0.7743621517642936,
-        "RMSE_std": 0.09488981677961224,
-        "R2": 0.9946827484843439,
-        "R2_std": 0.001447560615138751
-      },
-      {
-        "model": "XGBoost",
-        "MAE": 0.546854360012556,
-        "MAE_std": 0.040607454025694684,
-        "RMSE": 0.8941302288638026,
-        "RMSE_std": 0.11416370897485753,
-        "R2": 0.9929172797838198,
-        "R2_std": 0.0018514050098699265
-      },
-      {
-        "model": "CatBoost",
-        "MAE": 0.5510003675852115,
-        "MAE_std": 0.03301806019740633,
-        "RMSE": 0.8358352780044214,
-        "RMSE_std": 0.10914002463070177,
-        "R2": 0.993804110291182,
-        "R2_std": 0.001721524615444397
-      },
-      {
-        "model": "LightGBM",
-        "MAE": 0.5944101431518434,
-        "MAE_std": 0.031316492270410064,
-        "RMSE": 1.0243953639587793,
-        "RMSE_std": 0.12639160920970302,
-        "R2": 0.9907190499556154,
-        "R2_std": 0.002332949153597158
+        "MAE": 0.5113257395614911,
+        "MAE_std": 0.015793400913739694,
+        "RMSE": 0.7820728435886217,
+        "RMSE_std": 0.09190238256089814,
+        "R2": 0.9945860950554886,
+        "R2_std": 0.0014541696331353525,
+        "cv_folds": 5
       },
       {
         "model": "HistGradientBoosting",
-        "MAE": 0.606960531636093,
-        "MAE_std": 0.028838380935385044,
-        "RMSE": 0.9783915599108253,
-        "RMSE_std": 0.10929830462484293,
-        "R2": 0.9915376968689552,
-        "R2_std": 0.00199747361908567
+        "MAE": 0.59846479603476,
+        "MAE_std": 0.02639809187735352,
+        "RMSE": 0.9814759699689428,
+        "RMSE_std": 0.09813285537956616,
+        "R2": 0.991510393130978,
+        "R2_std": 0.0018655886908787692,
+        "cv_folds": 5
       },
       {
         "model": "ExtraTrees",
-        "MAE": 0.6410964816609857,
-        "MAE_std": 0.05993033663645221,
-        "RMSE": 1.1746847138016405,
-        "RMSE_std": 0.21285239523455277,
-        "R2": 0.9875698685503569,
-        "R2_std": 0.004384018184950582
+        "MAE": 0.6331292102437933,
+        "MAE_std": 0.06834090916912318,
+        "RMSE": 1.1665296311814253,
+        "RMSE_std": 0.2182527059297385,
+        "R2": 0.98771973658805,
+        "R2_std": 0.004504628003682447,
+        "cv_folds": 5
       },
       {
         "model": "RandomForest",
-        "MAE": 0.68298248092114,
-        "MAE_std": 0.0398292641277626,
-        "RMSE": 1.2234508494998235,
-        "RMSE_std": 0.1474839900115615,
-        "R2": 0.9867429283956902,
-        "R2_std": 0.0032890778770686283
+        "MAE": 0.6705799195531333,
+        "MAE_std": 0.04518417132869297,
+        "RMSE": 1.2171337076948496,
+        "RMSE_std": 0.16736558435673662,
+        "R2": 0.9868164186917511,
+        "R2_std": 0.0036646669000200255,
+        "cv_folds": 5
       },
       {
         "model": "Ridge",
-        "MAE": 1.8924024051960529,
-        "MAE_std": 0.08695581891827807,
-        "RMSE": 2.32663395204087,
-        "RMSE_std": 0.15668438611634997,
-        "R2": 0.9527149226246859,
-        "R2_std": 0.006644138428795388
+        "MAE": 2.19986659537581,
+        "MAE_std": 0.09586386890795014,
+        "RMSE": 2.6791398158265554,
+        "RMSE_std": 0.15363544280824748,
+        "R2": 0.9373512122706462,
+        "R2_std": 0.007687876316635646,
+        "cv_folds": 5
       }
     ],
     "training_subset_used": "valid_only",
     "training_subset_comparison": {
       "valid_only": {
         "n_rows": 866,
-        "MAE": 0.4926383663307338,
-        "RMSE": 0.8257167230868768,
-        "R2": 0.9938586648949379
+        "MAE": 0.487000004560118,
+        "RMSE": 0.8216219477383845,
+        "R2": 0.9939019414934395
       },
       "all_rows": {
         "n_rows": 1000,
-        "MAE": 0.7024343168310653,
-        "RMSE": 1.8834524216357522,
-        "R2": 0.9636356921517614
+        "MAE": 0.7208649584034273,
+        "RMSE": 1.9217100806794036,
+        "R2": 0.9629818999640125
       }
+    },
+    "feature_ablation": {
+      "feature_ablation_results": [
+        {
+          "feature_set": "raw_only",
+          "n_features": 8,
+          "MAE": 0.7120844322521537,
+          "MAE_std": 0.12349804092065297,
+          "RMSE": 1.7955130166701594,
+          "RMSE_std": 0.7313040782727239,
+          "R2": 0.9672809646230915,
+          "R2_std": 0.02594756055977043
+        },
+        {
+          "feature_set": "all",
+          "n_features": 29,
+          "MAE": 0.7238357232616255,
+          "MAE_std": 0.1159432132188198,
+          "RMSE": 1.8158471443324302,
+          "RMSE_std": 0.7150372361024241,
+          "R2": 0.966785220019892,
+          "R2_std": 0.025422853470536275
+        },
+        {
+          "feature_set": "no_s4",
+          "n_features": 28,
+          "MAE": 0.7248769506057597,
+          "MAE_std": 0.11221152263947314,
+          "RMSE": 1.8161709300538926,
+          "RMSE_std": 0.7181865338507238,
+          "R2": 0.9667616949447978,
+          "R2_std": 0.0255401767997158
+        },
+        {
+          "feature_set": "important_only",
+          "n_features": 9,
+          "MAE": 0.7332006545036677,
+          "MAE_std": 0.10664189580080351,
+          "RMSE": 1.786616918684648,
+          "RMSE_std": 0.7170207876122023,
+          "R2": 0.9677334634559762,
+          "R2_std": 0.025264732702236108
+        },
+        {
+          "feature_set": "engineered_only",
+          "n_features": 21,
+          "MAE": 1.2728710953429905,
+          "MAE_std": 0.13029730113207358,
+          "RMSE": 2.4580421239325045,
+          "RMSE_std": 0.5685885809981565,
+          "R2": 0.9443268912495368,
+          "R2_std": 0.02637892406556981
+        }
+      ],
+      "selected_feature_set": "raw_only"
     }
   },
   "anomaly_detection_out_of_fold_performance_vs_historical_labels": {
-    "accuracy": 0.966,
-    "precision": 0.9166666666666666,
-    "recall": 0.8208955223880597,
-    "f1": 0.8661417322834646,
-    "roc_auc": 0.9109303367688117,
+    "accuracy": 0.981,
+    "precision": 0.9914529914529915,
+    "recall": 0.8656716417910447,
+    "f1": 0.9243027888446215,
+    "roc_auc": 0.94210385715763,
     "confusion_matrix": [
       [
-        856,
-        10
+        865,
+        1
       ],
       [
-        24,
-        110
+        18,
+        116
       ]
     ],
-    "chosen_threshold": 0.45,
+    "chosen_threshold": 0.69,
     "threshold_selection_metric": "F1 on out-of-fold predictions",
     "n_folds": 5,
-    "override_z_threshold": 3.548351549689271
+    "override_z_threshold": 4.2521916055625635,
+    "selected_classifier": "RandomForest",
+    "isolation_forest_params": {
+      "n_estimators": 200,
+      "max_features": 0.75,
+      "contamination": "auto"
+    }
   },
+  "anomaly_detection_classifier_comparison": [
+    {
+      "classifier": "RandomForest",
+      "accuracy": 0.981,
+      "precision": 0.9914529914529915,
+      "recall": 0.8656716417910447,
+      "f1": 0.9243027888446215,
+      "roc_auc": 0.94210385715763,
+      "chosen_threshold": 0.69
+    },
+    {
+      "classifier": "LogisticRegression",
+      "accuracy": 0.966,
+      "precision": 0.9310344827586207,
+      "recall": 0.8059701492537313,
+      "f1": 0.864,
+      "roc_auc": 0.9306642308090035,
+      "chosen_threshold": 0.79
+    },
+    {
+      "classifier": "GradientBoosting",
+      "accuracy": 0.979,
+      "precision": 0.9747899159663865,
+      "recall": 0.8656716417910447,
+      "f1": 0.9169960474308301,
+      "roc_auc": 0.9244510702836856,
+      "chosen_threshold": 0.81
+    },
+    {
+      "classifier": "HistGradientBoosting",
+      "accuracy": 0.975,
+      "precision": 0.957983193277311,
+      "recall": 0.8507462686567164,
+      "f1": 0.9011857707509882,
+      "roc_auc": 0.9185912240184759,
+      "chosen_threshold": 0.11
+    }
+  ],
   "duplicate_logic_verification_train": {
     "n_duplicate_rows": 24,
     "n_duplicate_pairs": 12,
@@ -147,5 +225,5 @@
   },
   "methodology_explanation": "Imputer/consistency-lines/scaler/Isolation-Forest/classifier fit only on training folds (no leakage); test data transformed only. Invalid records flagged via physical-consistency checks, duplicate-row detection, Isolation Forest and a classifier, threshold chosen by out-of-fold F1. Reference_Parameter predicted with the best cross-validated regressor (VotingEnsemble) trained on verified rows.",
   "methodology_explanation_word_count": 42,
-  "pipeline_runtime_seconds": 58.59
+  "pipeline_runtime_seconds": 355.57
 }

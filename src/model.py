@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Dict, Tuple, List, Optional, Any
+from typing import Dict, Tuple, List, Optional, Any, Callable
 from pathlib import Path
 import joblib
 import numpy as np
@@ -13,7 +13,7 @@ from sklearn.ensemble import (
     HistGradientBoostingRegressor,
     VotingRegressor,
 )
-from sklearn.model_selection import KFold, cross_validate
+from sklearn.model_selection import KFold, RepeatedKFold, cross_validate, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -70,8 +70,36 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def get_feature_names(df: pd.DataFrame) -> List[str]:
-    exclude = {TARGET_COL, "Record_ID", "Validity_Label", "Anomaly_Flag", "ID", "Split"}
+    exclude = {TARGET_COL, "Record_ID", "Validity_Label", "Anomaly_Flag", "ID", "Split", "Is_Duplicate_Feature_Row", "Predicted_Invalid", "clf_proba_invalid", "iso_forest_score", "_attention_score"}
     return [col for col in df.columns if col not in exclude and pd.api.types.is_numeric_dtype(df[col])]
+
+
+def select_feature_set(df: pd.DataFrame, feature_set: str = "all") -> List[str]:
+    """Select feature subset based on configuration.
+    
+    Options:
+    - 'all': All raw features + engineered features
+    - 'no_s4': All features except Sensor_S4
+    - 'important_only': Only top correlated features (Load_Current_A, Sensor_S2, Ambient_Temperature_C)
+    - 'engineered_only': Only engineered features
+    - 'raw_only': Only raw features (no engineering)
+    """
+    all_features = get_feature_names(df)
+    
+    if feature_set == "all":
+        return all_features
+    elif feature_set == "no_s4":
+        return [f for f in all_features if "Sensor_S4" not in f and "S4" not in f]
+    elif feature_set == "important_only":
+        important = ["Load_Current_A", "Sensor_S2", "Ambient_Temperature_C", "Power_kVA", "Thermal_Load", "Sensor_Mean"]
+        return [f for f in all_features if any(imp in f for imp in important)]
+    elif feature_set == "engineered_only":
+        raw_set = set(RAW_FEATURE_COLS)
+        return [f for f in all_features if f not in raw_set]
+    elif feature_set == "raw_only":
+        return [f for f in all_features if f in RAW_FEATURE_COLS]
+    else:
+        return all_features
 
 
 def _candidate_models() -> Dict[str, Any]:
@@ -198,21 +226,32 @@ def _candidate_models() -> Dict[str, Any]:
     return models
 
 
+def _get_repeated_kfold(n_splits: int = 5, n_repeats: int = 3, random_state: int = RANDOM_STATE) -> RepeatedKFold:
+    """Get repeated K-Fold cross-validator."""
+    return RepeatedKFold(n_splits=n_splits, n_repeats=n_repeats, random_state=random_state)
+
+
 def compare_models(
     train_subset: pd.DataFrame,
     n_splits: int = 5,
+    n_repeats: int = 1,
     use_feature_engineering: bool = True,
+    feature_set: str = "all",
 ) -> Tuple[pd.DataFrame, Dict[str, Any], List[str]]:
     if use_feature_engineering:
         df_processed = engineer_features(train_subset)
     else:
         df_processed = train_subset.copy()
 
-    feature_cols = get_feature_names(df_processed)
+    feature_cols = select_feature_set(df_processed, feature_set)
     X = df_processed[feature_cols].astype(float).values
     y = df_processed[TARGET_COL].astype(float).values
 
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
+    if n_repeats > 1:
+        cv = _get_repeated_kfold(n_splits=n_splits, n_repeats=n_repeats)
+    else:
+        cv = KFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
+    
     scoring = {
         "MAE": "neg_mean_absolute_error",
         "RMSE": "neg_root_mean_squared_error",
@@ -222,7 +261,7 @@ def compare_models(
     models = _candidate_models()
     rows = []
     for name, model in models.items():
-        cv_res = cross_validate(model, X, y, cv=kf, scoring=scoring, n_jobs=1)
+        cv_res = cross_validate(model, X, y, cv=cv, scoring=scoring, n_jobs=1)
         rows.append({
             "model": name,
             "MAE": -cv_res["test_MAE"].mean(),
@@ -231,10 +270,53 @@ def compare_models(
             "RMSE_std": cv_res["test_RMSE"].std(),
             "R2": cv_res["test_R2"].mean(),
             "R2_std": cv_res["test_R2"].std(),
+            "cv_folds": n_splits * n_repeats,
         })
 
     results = pd.DataFrame(rows).sort_values("MAE").reset_index(drop=True)
     return results, models, feature_cols
+
+
+def compare_feature_sets(
+    train_subset: pd.DataFrame,
+    model_name: str = "GradientBoosting",
+    n_splits: int = 5,
+    n_repeats: int = 3,
+) -> pd.DataFrame:
+    """Compare different feature set configurations."""
+    feature_configs = ["all", "no_s4", "important_only", "engineered_only", "raw_only"]
+    model_builder = lambda: _candidate_models()[model_name]
+    
+    scoring = {
+        "MAE": "neg_mean_absolute_error",
+        "RMSE": "neg_root_mean_squared_error",
+        "R2": "r2",
+    }
+    
+    cv = _get_repeated_kfold(n_splits=n_splits, n_repeats=n_repeats)
+    df_processed = engineer_features(train_subset)
+    
+    rows = []
+    for feature_set in feature_configs:
+        feature_cols = select_feature_set(df_processed, feature_set)
+        X = df_processed[feature_cols].astype(float).values
+        y = df_processed[TARGET_COL].astype(float).values
+        
+        model = model_builder()
+        cv_res = cross_validate(model, X, y, cv=cv, scoring=scoring, n_jobs=1)
+        
+        rows.append({
+            "feature_set": feature_set,
+            "n_features": len(feature_cols),
+            "MAE": -cv_res["test_MAE"].mean(),
+            "MAE_std": cv_res["test_MAE"].std(),
+            "RMSE": -cv_res["test_RMSE"].mean(),
+            "RMSE_std": cv_res["test_RMSE"].std(),
+            "R2": cv_res["test_R2"].mean(),
+            "R2_std": cv_res["test_R2"].std(),
+        })
+    
+    return pd.DataFrame(rows).sort_values("MAE").reset_index(drop=True)
 
 
 def compare_training_subsets(
@@ -242,7 +324,9 @@ def compare_training_subsets(
     model_name: str = "GradientBoosting",
     model_builder: Optional[Any] = None,
     n_splits: int = 5,
+    n_repeats: int = 1,
     use_feature_engineering: bool = True,
+    feature_set: str = "all",
 ) -> Dict[str, Dict[str, float]]:
     if model_builder is None:
         model_builder = lambda: _candidate_models()[model_name]
@@ -271,13 +355,17 @@ def compare_training_subsets(
         else:
             subset_feat = subset.copy()
 
-        feature_cols = get_feature_names(subset_feat)
+        feature_cols = select_feature_set(subset_feat, feature_set)
         X = subset_feat[feature_cols].astype(float).values
         y = subset_feat[TARGET_COL].astype(float).values
 
-        kf = KFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
+        if n_repeats > 1:
+            cv = _get_repeated_kfold(n_splits=n_splits, n_repeats=n_repeats)
+        else:
+            cv = KFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
+        
         model = model_builder()
-        cv_res = cross_validate(model, X, y, cv=kf, scoring=scoring, n_jobs=1)
+        cv_res = cross_validate(model, X, y, cv=cv, scoring=scoring, n_jobs=1)
 
         out[label] = {
             "n_rows": len(subset),
@@ -287,6 +375,168 @@ def compare_training_subsets(
         }
 
     return out
+
+
+def evaluate_on_holdout(
+    train_subset: pd.DataFrame,
+    holdout_subset: pd.DataFrame,
+    model_builder: Callable,
+    use_feature_engineering: bool = True,
+    feature_set: str = "all",
+) -> Dict[str, float]:
+    """Evaluate model on untouched holdout set."""
+    if use_feature_engineering:
+        train_feat = engineer_features(train_subset)
+        holdout_feat = engineer_features(holdout_subset)
+    else:
+        train_feat = train_subset.copy()
+        holdout_feat = holdout_subset.copy()
+
+    feature_cols = select_feature_set(train_feat, feature_set)
+    # Ensure holdout has same features
+    feature_cols = [c for c in feature_cols if c in holdout_feat.columns]
+    
+    X_train = train_feat[feature_cols].astype(float).values
+    y_train = train_feat[TARGET_COL].astype(float).values
+    X_holdout = holdout_feat[feature_cols].astype(float).values
+    y_holdout = holdout_feat[TARGET_COL].astype(float).values
+
+    model = model_builder()
+    model.fit(X_train, y_train)
+    
+    from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+    y_pred = model.predict(X_holdout)
+    
+    return {
+        "MAE": float(mean_absolute_error(y_holdout, y_pred)),
+        "RMSE": float(np.sqrt(mean_squared_error(y_holdout, y_pred))),
+        "R2": float(r2_score(y_holdout, y_pred)),
+    }
+
+
+def optimize_hyperparameters_optuna(
+    train_subset: pd.DataFrame,
+    model_name: str,
+    n_trials: int = 100,
+    n_splits: int = 5,
+    n_repeats: int = 1,
+    use_feature_engineering: bool = True,
+    feature_set: str = "all",
+    random_state: int = RANDOM_STATE,
+) -> Dict[str, Any]:
+    """Optimize hyperparameters using Optuna."""
+    try:
+        import optuna
+    except ImportError:
+        raise ImportError("Optuna not installed. Run: pip install optuna")
+    
+    if use_feature_engineering:
+        df_processed = engineer_features(train_subset)
+    else:
+        df_processed = train_subset.copy()
+
+    feature_cols = select_feature_set(df_processed, feature_set)
+    X = df_processed[feature_cols].astype(float).values
+    y = df_processed[TARGET_COL].astype(float).values
+
+    if n_repeats > 1:
+        cv = _get_repeated_kfold(n_splits=n_splits, n_repeats=n_repeats, random_state=random_state)
+    else:
+        cv = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+
+    def objective(trial: optuna.Trial) -> float:
+        if model_name == "GradientBoosting":
+            params = {
+                "n_estimators": trial.suggest_int("n_estimators", 100, 500),
+                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+                "max_depth": trial.suggest_int("max_depth", 3, 8),
+                "min_samples_split": trial.suggest_int("min_samples_split", 2, 20),
+                "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 10),
+                "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+                "max_features": trial.suggest_float("max_features", 0.5, 1.0),
+                "loss": "huber",
+                "random_state": random_state,
+            }
+            model = GradientBoostingRegressor(**params)
+        elif model_name == "RandomForest":
+            params = {
+                "n_estimators": trial.suggest_int("n_estimators", 100, 500),
+                "max_depth": trial.suggest_int("max_depth", 5, 20),
+                "min_samples_split": trial.suggest_int("min_samples_split", 2, 20),
+                "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 10),
+                "max_features": trial.suggest_float("max_features", 0.5, 1.0),
+                "max_samples": trial.suggest_float("max_samples", 0.5, 1.0),
+                "random_state": random_state,
+                "n_jobs": -1,
+            }
+            model = RandomForestRegressor(**params)
+        elif model_name == "ExtraTrees":
+            params = {
+                "n_estimators": trial.suggest_int("n_estimators", 100, 500),
+                "max_depth": trial.suggest_int("max_depth", 5, 20),
+                "min_samples_split": trial.suggest_int("min_samples_split", 2, 20),
+                "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 10),
+                "max_features": trial.suggest_float("max_features", 0.5, 1.0),
+                "max_samples": trial.suggest_float("max_samples", 0.5, 1.0),
+                "random_state": random_state,
+                "n_jobs": -1,
+            }
+            model = ExtraTreesRegressor(**params)
+        elif model_name == "HistGradientBoosting":
+            params = {
+                "max_iter": trial.suggest_int("max_iter", 100, 500),
+                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+                "max_leaf_nodes": trial.suggest_int("max_leaf_nodes", 15, 63),
+                "min_samples_leaf": trial.suggest_int("min_samples_leaf", 5, 30),
+                "l2_regularization": trial.suggest_float("l2_regularization", 0.0, 5.0),
+                "random_state": random_state,
+            }
+            model = HistGradientBoostingRegressor(**params)
+        elif model_name == "XGBoost":
+            try:
+                from xgboost import XGBRegressor
+            except ImportError:
+                raise ImportError("XGBoost not installed")
+            params = {
+                "n_estimators": trial.suggest_int("n_estimators", 100, 500),
+                "max_depth": trial.suggest_int("max_depth", 3, 8),
+                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+                "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
+                "reg_alpha": trial.suggest_float("reg_alpha", 0.0, 1.0),
+                "reg_lambda": trial.suggest_float("reg_lambda", 0.5, 5.0),
+                "random_state": random_state,
+                "n_jobs": -1,
+                "verbosity": 0,
+            }
+            model = XGBRegressor(**params)
+        elif model_name == "LightGBM":
+            try:
+                from lightgbm import LGBMRegressor
+            except ImportError:
+                raise ImportError("LightGBM not installed")
+            params = {
+                "n_estimators": trial.suggest_int("n_estimators", 100, 500),
+                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+                "num_leaves": trial.suggest_int("num_leaves", 15, 63),
+                "subsample": trial.suggest_float("subsample", 0.6, 1.0),
+                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
+                "reg_alpha": trial.suggest_float("reg_alpha", 0.0, 1.0),
+                "reg_lambda": trial.suggest_float("reg_lambda", 0.5, 5.0),
+                "random_state": random_state,
+                "verbosity": -1,
+            }
+            model = LGBMRegressor(**params)
+        else:
+            raise ValueError(f"Optimization not implemented for {model_name}")
+
+        cv_res = cross_validate(model, X, y, cv=cv, scoring="neg_mean_absolute_error", n_jobs=1)
+        return -cv_res["test_score"].mean()
+
+    study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=random_state))
+    study.optimize(objective, n_trials=n_trials, show_progress_bar=False)
+    
+    return study.best_params
 
 
 def select_and_fit_best(
@@ -312,6 +562,55 @@ def select_and_fit_best(
     best_model.fit(X, y)
 
     return best_name, best_model, feature_cols
+
+
+def get_model_selection_table(results: pd.DataFrame, include_classification: bool = True) -> str:
+    """Generate a model selection table with all relevant metrics.
+    
+    Returns a formatted string table suitable for terminal output.
+    """
+    # Regression metrics
+    table_lines = []
+    table_lines.append("=" * 78)
+    table_lines.append("MODEL SELECTION TABLE")
+    table_lines.append("=" * 78)
+    table_lines.append(f"{'MODEL':<30} {'MAE':>8} {'RMSE':>8} {'R²':>8} {'Accuracy':>10} {'F1':>8}")
+    table_lines.append("-" * 78)
+    
+    for _, row in results.iterrows():
+        model_name = row["model"]
+        mae = row["MAE"]
+        rmse = row["RMSE"]
+        r2 = row["R2"]
+        # For classification metrics, we need to get them from the classification report
+        # For now, leave blank for pure regression comparison
+        accuracy = ""
+        f1 = ""
+        
+        table_lines.append(f"{model_name:<30} {mae:>8.4f} {rmse:>8.4f} {r2:>8.4f} {accuracy:>10} {f1:>8}")
+    
+    table_lines.append("-" * 78)
+    table_lines.append("")
+    table_lines.append(f"{'BEST MODEL':<30} (lowest CV MAE)")
+    table_lines.append("=" * 78)
+    table_lines.append("")
+    
+    # Classification metrics summary
+    if include_classification:
+        table_lines.append("CLASSIFICATION METRICS (on Valid/Invalid):")
+        table_lines.append("-" * 78)
+        table_lines.append(f"{'Metric':<15} {'Value':>15}")
+        table_lines.append("-" * 78)
+        # These would be filled in from the classification report
+        # for now, just note that they're available
+        table_lines.append(f"{'Accuracy':<15} (from CV report)")
+        table_lines.append(f"{'Precision':<15} (from CV report)")
+        table_lines.append(f"{'Recall':<15} (from CV report)")
+        table_lines.append(f"{'F1':<15} (from CV report)")
+        table_lines.append(f"{'ROC-AUC':<15} (from CV report)")
+        table_lines.append("")
+    
+    return "\n".join(table_lines)
 
 
 def feature_importance(
@@ -375,6 +674,7 @@ def load_model(path: Path | str) -> Tuple[Any, Optional[List[str]]]:
         return obj["model"], obj.get("feature_cols")
     return obj, None
 
+
 if __name__ == "__main__":
     import os
     import sys
@@ -382,7 +682,7 @@ if __name__ == "__main__":
     from preprocessing import load_and_clean
 
     _data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
-    tr, te = load_and_clean(
+    tr, te, _ = load_and_clean(
         os.path.join(_data_dir, "training_data.csv"),
         os.path.join(_data_dir, "test_data.csv"),
     )

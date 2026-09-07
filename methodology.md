@@ -1,6 +1,6 @@
 # Methodology — CPRI PowerNext-AI Screening Round (Corrected)
 
-**Team:** CPRI_ClaudeSquad
+**Team:** Neon Nomads
 
 This document describes the pipeline as it actually runs in `src/main.py`
 after fixing the cross-validation leakage and train/test-consistency issues

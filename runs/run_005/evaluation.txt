@@ -1,0 +1,43 @@
+NEON NOMADS MODEL EVALUATION
+============================
+
+Run: run_005
+Date/Time: 2026-09-07T16:54:53.231397+00:00
+
+REFERENCE PARAMETER
+-------------------
+Model: VotingEnsemble
+MAE  (lower is better):  0.4870
+RMSE (lower is better):  0.8216
+R2   (higher is better): 0.9939
+
+VALID / INVALID CLASSIFICATION
+------------------------------
+Model: RandomForest
+Accuracy:  0.9810
+Precision: 0.9915
+Recall:    0.8657
+F1 Score:  0.9243
+ROC-AUC:   0.9421
+Confusion matrix (rows=true[Valid,Invalid], cols=pred): [[865, 1], [18, 116]]
+
+VALIDATION METHOD
+-----------------
+Reference_Parameter: 5-fold cross-validation on Valid-only rows of data/training_data.csv
+Valid/Invalid: 5-fold genuinely out-of-fold cross-validation on data/training_data.csv (consistency lines / scaler / Isolation Forest / classifier all refit per fold)
+
+NUMBER OF RECORDS
+------------------
+Training records: 1000
+Validation folds (regression): 5
+Validation folds (classification): 5
+Test records (final predictions, no ground truth): 350
+
+IMPORTANT:
+These are INTERNAL VALIDATION metrics, computed only from
+data/training_data.csv (which has ground truth).
+data/test_data.csv has no Reference_Parameter / Validity_Label,
+so no accuracy is calculated against it - only final predictions
+are produced for the hackathon submission.
+The official hackathon test score will be determined using the
+hidden evaluation data.

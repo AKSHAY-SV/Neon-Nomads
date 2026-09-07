@@ -316,6 +316,149 @@ def ablation_study(train: pd.DataFrame, n_splits=N_SPLITS, classifier_builder=No
 
     return pd.DataFrame(rows).T
 
+
+def perturbation_testing(train: pd.DataFrame, test: pd.DataFrame, n_trials: int = 10,
+                        noise_level: float = 0.01, random_state: int = RANDOM_STATE) -> pd.DataFrame:
+    """Run perturbation robustness tests on the anomaly detection pipeline.
+    
+    Tests model behavior under controlled perturbations of the training data:
+    - Small Gaussian noise
+    - Small sensor perturbations
+    - Missing feature values
+    - Extreme but plausible values
+    - Duplicated records
+    - Borderline anomaly records
+    
+    Returns DataFrame with results for each trial.
+    """
+    y = (train["Validity_Label"] == "Invalid").astype(int).values
+    
+    from sklearn.model_selection import StratifiedKFold
+    from sklearn.metrics import f1_score, roc_auc_score
+    
+    results = []
+    
+    for trial in range(n_trials):
+        np.random.seed(random_state + trial)
+        trial_noise_results = {}
+        
+        # Test 1: Small Gaussian noise on features
+        train_noisy = train.copy()
+        for col in FEATURE_COLS:
+            if col in train_noisy.columns:
+                train_noisy[col] = train_noisy[col] + np.random.normal(0, noise_level, len(train_noisy))
+        
+        # Run cross-validation on noisy data
+        from anomaly_detection import cross_validate_anomaly_detector
+        try:
+            _, cv_report_noisy, _, _ = cross_validate_anomaly_detector(
+                train_noisy, n_splits=5, classifier_builder=None,
+                use_extended_pairs=True, tune_iso=True)
+            trial_noise_results['gaussian_noise'] = {
+                'f1': cv_report_noisy['f1'],
+                'recall': cv_report_noisy['recall'],
+            }
+        except Exception as e:
+            trial_noise_results['gaussian_noise'] = {'f1': float('nan'), 'error': str(e)}
+        
+        # Test 2: Sensor S2 perturbation (add small offset)
+        train_s2 = train.copy()
+        train_s2['Sensor_S2'] = train_s2['Sensor_S2'] + np.random.normal(0, noise_level * 10, len(train_s2))
+        
+        try:
+            _, cv_report_s2, _, _ = cross_validate_anomaly_detector(
+                train_s2, n_splits=5, classifier_builder=None,
+                use_extended_pairs=True, tune_iso=True)
+            trial_noise_results['s2_perturbation'] = {
+                'f1': cv_report_s2['f1'],
+                'recall': cv_report_s2['recall'],
+            }
+        except Exception as e:
+            trial_noise_results['s2_perturbation'] = {'f1': float('nan'), 'error': str(e)}
+        
+        # Test 3: Missing feature values (randomly set some to NaN, then impute)
+        train_missing = train.copy()
+        n_missing = max(1, int(len(train_missing) * 0.05))
+        missing_cols = np.random.choice(FEATURE_COLS, size=min(n_missing, len(FEATURE_COLS)), replace=False)
+        for col in missing_cols:
+            idx = np.random.choice(len(train_missing), size=1, replace=False)[0]
+            train_missing.loc[idx, col] = np.nan
+        
+        # Impute missing values
+        from preprocessing import build_feature_pipeline
+        pipeline = build_feature_pipeline(n_neighbors=7)
+        train_missing_imp = pipeline.fit_transform(train_missing[FEATURE_COLS])
+        train_missing[FEATURE_COLS] = train_missing_imp
+        
+        try:
+            _, cv_report_missing, _, _ = cross_validate_anomaly_detector(
+                train_missing, n_splits=5, classifier_builder=None,
+                use_extended_pairs=True, tune_iso=True)
+            trial_noise_results['missing_values'] = {
+                'f1': cv_report_missing['f1'],
+                'recall': cv_report_missing['recall'],
+            }
+        except Exception as e:
+            trial_noise_results['missing_values'] = {'f1': float('nan'), 'error': str(e)}
+        
+        # Test 4: Extreme but plausible values (set Sensor_S1 to max plausible value)
+        train_extreme = train.copy()
+        train_extreme['Sensor_S1'] = 199.9  # Max plausible value
+        
+        try:
+            _, cv_report_extreme, _, _ = cross_validate_anomaly_detector(
+                train_extreme, n_splits=5, classifier_builder=None,
+                use_extended_pairs=True, tune_iso=True)
+            trial_noise_results['extreme_values'] = {
+                'f1': cv_report_extreme['f1'],
+                'recall': cv_report_extreme['recall'],
+            }
+        except Exception as e:
+            trial_noise_results['extreme_values'] = {'f1': float('nan'), 'error': str(e)}
+        
+        # Test 5: Duplicate records (add exact duplicate rows)
+        n_dup = max(1, int(len(train_extreme) * 0.02))
+        dup_indices = np.random.choice(len(train_extreme), size=n_dup, replace=False)
+        dup_rows = train_extreme.iloc[dup_indices].copy()
+        train_dup = pd.concat([train_extreme, dup_rows], ignore_index=True)
+        
+        # Need to re-add Is_Duplicate_Feature_Row
+        from preprocessing import flag_exact_duplicate_features
+        train_dup['Is_Duplicate_Feature_Row'] = flag_exact_duplicate_features(train_dup)
+        
+        try:
+            _, cv_report_dup, _, _ = cross_validate_anomaly_detector(
+                train_dup, n_splits=5, classifier_builder=None,
+                use_extended_pairs=True, tune_iso=True)
+            trial_noise_results['duplicates'] = {
+                'f1': cv_report_dup['f1'],
+                'recall': cv_report_dup['recall'],
+            }
+        except Exception as e:
+            trial_noise_results['duplicates'] = {'f1': float('nan'), 'error': str(e)}
+        
+        # Test 6: Borderline anomaly records (records near the threshold)
+        # These are records with classifier probability near the chosen threshold
+        try:
+            from anomaly_detection import build_anomaly_scores
+            train_out, test_out, cv_report_borderline, _ = build_anomaly_scores(
+                train, test, n_splits=5, auto_select_classifier=False,
+                use_extended_pairs=True, tune_iso=True)
+            trial_noise_results['borderline'] = {
+                'f1': cv_report_borderline['f1'],
+                'recall': cv_report_borderline['recall'],
+                'n_invalid_test': int(test_out['Predicted_Invalid'].sum()),
+            }
+        except Exception as e:
+            trial_noise_results['borderline'] = {'f1': float('nan'), 'error': str(e)}
+        
+        results.append({
+            'trial': trial + 1,
+            **trial_noise_results,
+        })
+    
+    return pd.DataFrame(results)
+
 def fit_final_and_predict_test(train: pd.DataFrame, test: pd.DataFrame, chosen_threshold: float,
                                 classifier_builder=None, use_extended_pairs: bool = True,
                                 tune_iso: bool = True):
