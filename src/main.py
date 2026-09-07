@@ -8,9 +8,11 @@ import traceback
 from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from preprocessing import load_and_clean, verify_duplicate_logic, FEATURE_COLS
+from preprocessing import (load_and_clean, verify_duplicate_logic, FEATURE_COLS,
+                           engineer_features, get_feature_names)
 from anomaly_detection import build_anomaly_scores
 from model import (compare_models, compare_training_subsets, select_and_fit_best,
                    feature_importance, predict, save_model, TARGET_COL, _candidate_models,
@@ -57,7 +59,6 @@ def run_feature_ablation(train_scored: pd.DataFrame, test: pd.DataFrame, args) -
     )
     print(ablation_results.to_string(index=False))
     
-    # Store results in summary
     return {
         'feature_ablation_results': ablation_results.to_dict(orient='records'),
         'selected_feature_set': ablation_results.iloc[0]['feature_set']
@@ -81,21 +82,16 @@ def run_optuna_optimization(train_valid: pd.DataFrame, args) -> dict:
     
     print(f'Best parameters: {best_params}')
     
-    # Re-train with best params
     from model import _candidate_models
     model_builder = lambda: _candidate_models()["GradientBoosting"]
     
-    # Update params
     current_params = model_builder().get_params()
     current_params.update(best_params)
     
-    # Re-create model with best params
     best_model = model_builder()
-    # We need to set the params after creation
     for k, v in best_params.items():
         setattr(best_model, k, v)
     
-    # Fit on valid-only training data
     from sklearn.model_selection import KFold, cross_validate
     from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
     
@@ -133,7 +129,6 @@ def run_holdout_evaluation(train_scored: pd.DataFrame, test: pd.DataFrame, args)
     """Run untouched holdout evaluation (Phase 9)."""
     print('\n=== HOLDOUT EVALUATION (Phase 9) ===')
     
-    # Split training data: 90% development, 10% holdout
     holdout_ratio = args.holdout_ratio
     random_state = args.holdout_seed if args.holdout_seed else args.seed
     
@@ -147,17 +142,14 @@ def run_holdout_evaluation(train_scored: pd.DataFrame, test: pd.DataFrame, args)
     print(f'Development set: {len(dev_df)} rows ({100*(1-holdout_ratio):.1f}%)')
     print(f'Holdout set: {len(holdout_df)} rows ({100*holdout_ratio:.1f}%)')
     
-    # Train on development set only
     model_builder = lambda: _candidate_models()["GradientBoosting"]
     subset_comparison = compare_training_subsets(
         dev_df, "GradientBoosting", model_builder, n_splits=args.cv_folds
     )
     
-    # Get best model
     better_subset = min(subset_comparison, key=lambda k: subset_comparison[k]['MAE'])
     print(f'Best subset: {better_subset}')
     
-    # Evaluate on holdout
     best_model_name = subset_comparison[better_subset].get('model', 'GradientBoosting')
     best_model = _candidate_models()[best_model_name]
     
@@ -168,7 +160,6 @@ def run_holdout_evaluation(train_scored: pd.DataFrame, test: pd.DataFrame, args)
     
     print(f'Holdout metrics: MAE={holdout_metrics["MAE"]:.4f}, RMSE={holdout_metrics["RMSE"]:.4f}, R2={holdout_metrics["R2"]:.4f}')
     
-    # Also predict on test data
     test_scored, _, _ = build_anomaly_scores(dev_df, test)
     n_invalid_test = int(test_scored['Predicted_Invalid'].sum())
     
@@ -326,7 +317,6 @@ def main():
     print(f'  Total pipeline runtime: {summary["pipeline_runtime_seconds"]}s')
     print('-' * 72)
 
-    # Run additional testing modes based on arguments
     if args.test_mode == 2:
         print('\n--- Running Holdout Evaluation (Phase 2) ---')
         holdout_results = run_holdout_evaluation(train_scored, test, args)
@@ -340,7 +330,6 @@ def main():
         summary['optuna_results'] = optuna_results
     elif args.test_mode == 10:
         print('\n--- Full blind test prediction ---')
-        # Already done in the main pipeline
         pass
     
     print('\nSaving run history (internal validation, computed only from data/training_data.csv)...')
