@@ -57,7 +57,7 @@ def main():
     print(f'  Exact duplicate feature-rows -> train: {int(train['Is_Duplicate_Feature_Row'].sum())}, test: {int(test['Is_Duplicate_Feature_Row'].sum())}')
     print('\n[2/7] Detecting abnormal / invalid records (nested, leakage-free CV)...')
     try:
-        train_scored, test_scored, cv_report = build_anomaly_scores(train, test)
+        train_scored, test_scored, cv_report, clf_comparison = build_anomaly_scores(train, test)
     except Exception:
         print('ERROR during anomaly detection:')
         traceback.print_exc()
@@ -69,6 +69,10 @@ def main():
     print(f'    confusion_matrix (rows=true[Valid,Invalid], cols=pred): {cv_report['confusion_matrix']}')
     print(f'    decision threshold chosen on OOF predictions (maximising F1): {cv_report['chosen_threshold']}')
     print(f'    hard-override residual-z threshold (data-driven): {cv_report['override_z_threshold']:.2f}')
+    print(f'    selected classifier (best OOF ROC-AUC): {cv_report['selected_classifier']}')
+    if clf_comparison is not None:
+        print('  Classifier comparison (OOF, sorted by ROC-AUC):')
+        print('  ' + clf_comparison.to_string(index=False).replace('\n', '\n  '))
     n_invalid_test = int(test_scored['Predicted_Invalid'].sum())
     print(f'  Predicted Invalid in TEST set: {n_invalid_test} / {n_test} ({100 * n_invalid_test / n_test:.1f}%)')
     print('\n[3/7] Comparing regression models (5-fold CV, Valid-only training rows)...')
@@ -143,7 +147,7 @@ def main():
     n_words = len(methodology_summary.split())
     if n_words > 100:
         methodology_summary = ' '.join(methodology_summary.split()[:100])
-    summary = {'generated_at_utc': datetime.now(timezone.utc).isoformat(), 'team_name': team_name, 'records_analysed': int(n_test), 'abnormal_invalid_count': n_invalid_test, 'abnormal_invalid_percentage': round(100 * n_invalid_test / n_test, 2), 'predicted_reference_parameter': {'minimum': round(float(preds.min()), 4), 'maximum': round(float(preds.max()), 4), 'average': round(float(preds.mean()), 4)}, 'test_ids_requiring_highest_attention': top_attention, 'model_selection': {'selected_model': best_name, 'cv_mae': round(float(results.iloc[0]['MAE']), 4), 'cv_rmse': round(float(results.iloc[0]['RMSE']), 4), 'cv_r2': round(float(results.iloc[0]['R2']), 4), 'all_models_compared': results.to_dict(orient='records'), 'training_subset_used': 'valid_only', 'training_subset_comparison': subset_comparison}, 'anomaly_detection_out_of_fold_performance_vs_historical_labels': {k: v for k, v in cv_report.items()}, 'duplicate_logic_verification_train': dup_check, 'methodology_explanation': methodology_summary, 'methodology_explanation_word_count': len(methodology_summary.split()), 'pipeline_runtime_seconds': None}
+    summary = {'generated_at_utc': datetime.now(timezone.utc).isoformat(), 'team_name': team_name, 'records_analysed': int(n_test), 'abnormal_invalid_count': n_invalid_test, 'abnormal_invalid_percentage': round(100 * n_invalid_test / n_test, 2), 'predicted_reference_parameter': {'minimum': round(float(preds.min()), 4), 'maximum': round(float(preds.max()), 4), 'average': round(float(preds.mean()), 4)}, 'test_ids_requiring_highest_attention': top_attention, 'model_selection': {'selected_model': best_name, 'cv_mae': round(float(results.iloc[0]['MAE']), 4), 'cv_rmse': round(float(results.iloc[0]['RMSE']), 4), 'cv_r2': round(float(results.iloc[0]['R2']), 4), 'all_models_compared': results.to_dict(orient='records'), 'training_subset_used': 'valid_only', 'training_subset_comparison': subset_comparison}, 'anomaly_detection_out_of_fold_performance_vs_historical_labels': {k: v for k, v in cv_report.items()}, 'anomaly_detection_classifier_comparison': (clf_comparison.to_dict(orient='records') if clf_comparison is not None else None), 'duplicate_logic_verification_train': dup_check, 'methodology_explanation': methodology_summary, 'methodology_explanation_word_count': len(methodology_summary.split()), 'pipeline_runtime_seconds': None}
     summary['pipeline_runtime_seconds'] = round(time.time() - t_start, 2)
     summary_path = os.path.join(output_dir, 'summary.json')
     with open(summary_path, 'w') as f:
