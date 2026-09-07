@@ -1,6 +1,6 @@
 # CPRI PowerNext-AI — Screening Round Submission (Corrected)
 
-**Team:** CPRI_ClaudeSquad
+**Team:** Neon Nomads
 **Challenge:** The Black-Box Test Bench Challenge
 
 This is the corrected version of the pipeline. See `methodology.md` for the
@@ -55,7 +55,7 @@ project/
 python3 -m venv venv
 source venv/bin/activate        # on Windows: venv\Scripts\activate
 pip install -r requirements.txt
-python src/main.py --team-name "CPRI_ClaudeSquad"
+python src/main.py --team-name "Neon Nomads"
 ```
 
 Run this from the project root (the folder containing `src/`, `data/`,
@@ -64,13 +64,13 @@ relative to its own file location, so it also works if you `cd src` first:
 
 ```bash
 cd src
-python3 main.py --team-name "CPRI_ClaudeSquad"
+python3 main.py --team-name "Neon Nomads"
 ```
 
 Optional arguments:
 
 ```
---team-name   Name used for the output CSV filename (default: CPRI_PowerNext_Team)
+--team-name   Name used for the output CSV filename (default: Neon Nomads)
 --data-dir    Directory containing training_data.csv / test_data.csv (default: ../data)
 --output-dir  Directory to write outputs into (default: ../output)
 ```
