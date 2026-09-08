@@ -1,18 +1,18 @@
 {
-  "generated_at_utc": "2026-09-08T20:51:12.601036+00:00",
+  "generated_at_utc": "2026-09-08T21:30:32.157241+00:00",
   "team_name": "Neon Nomads",
   "records_analysed": 350,
-  "abnormal_invalid_count": 39,
-  "abnormal_invalid_percentage": 11.14,
+  "abnormal_invalid_count": 40,
+  "abnormal_invalid_percentage": 11.43,
   "predicted_reference_parameter": {
-    "minimum": 13.1108,
-    "maximum": 56.6291,
-    "average": 26.3964
+    "minimum": 13.1584,
+    "maximum": 57.4557,
+    "average": 26.4083
   },
   "test_ids_requiring_highest_attention": [
     "TST-0258",
-    "TST-0142",
-    "TST-0178"
+    "TST-0178",
+    "TST-0142"
   ],
   "model_selection": {
     "selected_model": "VotingEnsemble",
@@ -21,107 +21,107 @@
       {
         "feature_set": "raw_only",
         "n_features": 8,
-        "MAE": 0.48187065608728813,
-        "MAE_std": 0.021835182761757426,
-        "RMSE": 0.8302873034243442,
-        "RMSE_std": 0.1592512250080888,
-        "R2": 0.9937461724399101,
-        "R2_std": 0.0025452316668246946
+        "MAE": 0.4821739795007126,
+        "MAE_std": 0.028746184606516952,
+        "RMSE": 0.8007772283044658,
+        "RMSE_std": 0.13263164606144703,
+        "R2": 0.9942394817632445,
+        "R2_std": 0.001954575425454984
       },
       {
         "feature_set": "all",
         "n_features": 40,
-        "MAE": 0.4938276333962266,
-        "MAE_std": 0.023110278210121765,
-        "RMSE": 0.8545355846261747,
-        "RMSE_std": 0.16092814814896447,
-        "R2": 0.9933824316881023,
-        "R2_std": 0.0025352407352962885
+        "MAE": 0.4966961221847644,
+        "MAE_std": 0.03313313006239789,
+        "RMSE": 0.8375918682861441,
+        "RMSE_std": 0.14076375998499424,
+        "R2": 0.993691932339714,
+        "R2_std": 0.0020853470735746286
       },
       {
         "feature_set": "no_s4",
         "n_features": 38,
-        "MAE": 0.4940234000468745,
-        "MAE_std": 0.030556812375581912,
-        "RMSE": 0.8509790681789703,
-        "RMSE_std": 0.15993732812922573,
-        "R2": 0.9934428073323153,
-        "R2_std": 0.002433019864896617
+        "MAE": 0.49833529958004374,
+        "MAE_std": 0.03159059705166264,
+        "RMSE": 0.8404577626082779,
+        "RMSE_std": 0.1442325239235873,
+        "R2": 0.9936400549200192,
+        "R2_std": 0.002148004279665398
       },
       {
         "feature_set": "important_only",
         "n_features": 10,
-        "MAE": 0.49608613532440105,
-        "MAE_std": 0.024639547691687597,
-        "RMSE": 0.8086642827432119,
-        "RMSE_std": 0.1446076742497686,
-        "R2": 0.9941023428486713,
-        "R2_std": 0.002096880521040438
+        "MAE": 0.4988217327282256,
+        "MAE_std": 0.025149135364171682,
+        "RMSE": 0.8097174888045652,
+        "RMSE_std": 0.12406313558875397,
+        "R2": 0.9941376773813276,
+        "R2_std": 0.0017683183295363206
       },
       {
         "feature_set": "engineered_only",
         "n_features": 32,
-        "MAE": 0.613050429937822,
-        "MAE_std": 0.031689632595962115,
-        "RMSE": 1.1641468524386323,
-        "RMSE_std": 0.21169955222472644,
-        "R2": 0.9877787910197858,
-        "R2_std": 0.004283249036967701
+        "MAE": 0.6306039177931624,
+        "MAE_std": 0.022740225468425652,
+        "RMSE": 1.1757877946064395,
+        "RMSE_std": 0.20711000318927683,
+        "R2": 0.9875476627130508,
+        "R2_std": 0.004205589427963707
       }
     ],
     "holdout_evaluation": null,
-    "cv_mae": 0.4938,
-    "cv_rmse": 0.8545,
-    "cv_r2": 0.9934,
+    "cv_mae": 0.4967,
+    "cv_rmse": 0.8376,
+    "cv_r2": 0.9937,
     "all_models_compared": [
       {
         "model": "VotingEnsemble",
-        "MAE": 0.4938276333962267,
-        "MAE_std": 0.023110278210121706,
-        "RMSE": 0.8545355846261747,
-        "RMSE_std": 0.16092814814896433,
-        "R2": 0.9933824316881023,
-        "R2_std": 0.0025352407352962885,
+        "MAE": 0.4966961221847642,
+        "MAE_std": 0.03313313006239799,
+        "RMSE": 0.8375918682861438,
+        "RMSE_std": 0.14076375998499435,
+        "R2": 0.993691932339714,
+        "R2_std": 0.0020853470735746286,
         "cv_folds": 5
       },
       {
         "model": "GradientBoosting",
-        "MAE": 0.5177166202574859,
-        "MAE_std": 0.023953723344121196,
-        "RMSE": 0.8021390338792618,
-        "RMSE_std": 0.11056535359473227,
-        "R2": 0.9942683234206751,
-        "R2_std": 0.0017537626888097565,
+        "MAE": 0.5170503405028534,
+        "MAE_std": 0.030081015418802627,
+        "RMSE": 0.821292647012155,
+        "RMSE_std": 0.09849577322624145,
+        "R2": 0.9940254663568536,
+        "R2_std": 0.001532924416077156,
         "cv_folds": 5
       },
       {
         "model": "HistGradientBoosting",
-        "MAE": 0.5972373552347658,
-        "MAE_std": 0.018418853004497922,
-        "RMSE": 0.9745372861264112,
-        "RMSE_std": 0.10867207304763878,
-        "R2": 0.9916063661798808,
-        "R2_std": 0.0019847353202382197,
+        "MAE": 0.5994649506147841,
+        "MAE_std": 0.015860164754931416,
+        "RMSE": 0.9703566726084398,
+        "RMSE_std": 0.0978382476620982,
+        "R2": 0.9916994339888238,
+        "R2_std": 0.0017885538553716537,
         "cv_folds": 5
       },
       {
         "model": "ExtraTrees",
-        "MAE": 0.6131204361058339,
-        "MAE_std": 0.04964389708831945,
-        "RMSE": 1.2010023338030085,
-        "RMSE_std": 0.218875852042244,
-        "R2": 0.9869861906771137,
-        "R2_std": 0.004631564097594749,
+        "MAE": 0.6094033629021061,
+        "MAE_std": 0.04978818270975857,
+        "RMSE": 1.197346653444796,
+        "RMSE_std": 0.2199929786709719,
+        "R2": 0.9870543545686671,
+        "R2_std": 0.004667815460610422,
         "cv_folds": 5
       },
       {
         "model": "RandomForest",
-        "MAE": 0.6958743742857176,
-        "MAE_std": 0.046197439726701525,
-        "RMSE": 1.268171690417377,
-        "RMSE_std": 0.16330654356533716,
-        "R2": 0.9857195304154583,
-        "R2_std": 0.0037776797368316638,
+        "MAE": 0.6941894454797445,
+        "MAE_std": 0.05140277024496892,
+        "RMSE": 1.2676161519564892,
+        "RMSE_std": 0.17064977131627707,
+        "R2": 0.9857079657007892,
+        "R2_std": 0.00392497159762951,
         "cv_folds": 5
       },
       {
@@ -139,39 +139,39 @@
     "training_subset_comparison": {
       "valid_only": {
         "n_rows": 866,
-        "MAE": 0.5486401751265305,
-        "RMSE": 0.9721916025471931,
-        "R2": 0.9914483499582104
+        "MAE": 0.5479952606290904,
+        "RMSE": 0.9452194848190679,
+        "R2": 0.9919403823170264
       },
       "all_rows": {
         "n_rows": 1000,
-        "MAE": 0.7944273899561912,
-        "RMSE": 2.1040697180884664,
-        "R2": 0.9609567219418197
+        "MAE": 0.8326018644863017,
+        "RMSE": 2.1659426533527744,
+        "R2": 0.958743301342395
       }
     },
     "feature_ablation": {}
   },
   "anomaly_detection_out_of_fold_performance_vs_historical_labels": {
-    "accuracy": 0.981,
-    "precision": 0.9914529914529915,
-    "recall": 0.8656716417910447,
-    "f1": 0.9243027888446215,
-    "roc_auc": 0.9421038571576299,
+    "accuracy": 0.98,
+    "precision": 0.9672131147540983,
+    "recall": 0.8805970149253731,
+    "f1": 0.921875,
+    "roc_auc": 0.9360156492364966,
     "confusion_matrix": [
       [
-        865,
-        1
+        862,
+        4
       ],
       [
-        18,
-        116
+        16,
+        118
       ]
     ],
-    "chosen_threshold": 0.69,
+    "chosen_threshold": 0.51,
     "threshold_selection_metric": "F1-optimal threshold selected via OOF cross-validated grid search",
     "n_folds": 5,
-    "override_z_threshold": 4.2521916055625635,
+    "override_z_threshold": 4.052191605562563,
     "selected_classifier": "RandomForest",
     "isolation_forest_params": {
       "n_estimators": 200,
@@ -182,39 +182,39 @@
   "anomaly_detection_classifier_comparison": [
     {
       "classifier": "RandomForest",
-      "accuracy": 0.981,
-      "precision": 0.9914529914529915,
-      "recall": 0.8656716417910447,
-      "f1": 0.9243027888446215,
-      "roc_auc": 0.94210385715763,
-      "chosen_threshold": 0.69
-    },
-    {
-      "classifier": "LogisticRegression",
-      "accuracy": 0.966,
-      "precision": 0.9310344827586207,
-      "recall": 0.8059701492537313,
-      "f1": 0.864,
-      "roc_auc": 0.9306642308090035,
-      "chosen_threshold": 0.79
+      "accuracy": 0.98,
+      "precision": 0.9672131147540983,
+      "recall": 0.8805970149253731,
+      "f1": 0.921875,
+      "roc_auc": 0.9360156492364965,
+      "chosen_threshold": 0.51
     },
     {
       "classifier": "GradientBoosting",
-      "accuracy": 0.979,
-      "precision": 0.9747899159663865,
-      "recall": 0.8656716417910447,
-      "f1": 0.9169960474308301,
-      "roc_auc": 0.9244510702836856,
+      "accuracy": 0.981,
+      "precision": 0.967479674796748,
+      "recall": 0.8880597014925373,
+      "f1": 0.9260700389105059,
+      "roc_auc": 0.9244166005997725,
+      "chosen_threshold": 0.43
+    },
+    {
+      "classifier": "LogisticRegression",
+      "accuracy": 0.953,
+      "precision": 0.8918918918918919,
+      "recall": 0.7388059701492538,
+      "f1": 0.8081632653061225,
+      "roc_auc": 0.9243821309158596,
       "chosen_threshold": 0.81
     },
     {
       "classifier": "HistGradientBoosting",
-      "accuracy": 0.975,
-      "precision": 0.957983193277311,
-      "recall": 0.8507462686567164,
-      "f1": 0.9011857707509882,
-      "roc_auc": 0.9185912240184759,
-      "chosen_threshold": 0.11
+      "accuracy": 0.979,
+      "precision": 0.9829059829059829,
+      "recall": 0.8582089552238806,
+      "f1": 0.9163346613545816,
+      "roc_auc": 0.9143169832132639,
+      "chosen_threshold": 0.41
     }
   ],
   "duplicate_logic_verification_train": {
@@ -225,5 +225,5 @@
   },
   "methodology_explanation": "Imputer/consistency-lines/scaler/Isolation-Forest/classifier fit only on training folds (no leakage); test data transformed only. Invalid records flagged via physical-consistency checks, duplicate-row detection, Isolation Forest and a classifier, threshold chosen by out-of-fold F1. Reference_Parameter predicted with the best cross-validated regressor (VotingEnsemble) trained on verified rows.",
   "methodology_explanation_word_count": 42,
-  "pipeline_runtime_seconds": 176.01
+  "pipeline_runtime_seconds": 252.64
 }
