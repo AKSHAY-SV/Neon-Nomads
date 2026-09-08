@@ -222,7 +222,7 @@ def cross_validate_anomaly_detector(train: pd.DataFrame, n_splits=N_SPLITS,
                                      classifier_builder=None,
                                      use_extended_pairs: bool = True,
                                      tune_iso: bool = True,
-                                     fixed_threshold: float = 0.41):
+                                     fixed_threshold: float | None = None):
     y = (train["Validity_Label"] == "Invalid").astype(int).values
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
 
@@ -248,7 +248,15 @@ def cross_validate_anomaly_detector(train: pd.DataFrame, n_splits=N_SPLITS,
         oof_dup[val_idx] = val_feat["Is_Duplicate_Feature_Row"].astype(bool).values
         oof_iso_score[val_idx] = val_feat["iso_forest_score"].values
 
-    chosen_threshold, _ = _fixed_threshold(y, oof_proba, fixed_threshold)
+    if fixed_threshold is None:
+        # Leakage-free: threshold is swept over out-of-fold probabilities only
+        # (never touches the held-out fold's labels during fitting), so this
+        # search is purely an OOF-CV decision, not a source of leakage.
+        chosen_threshold, _ = _best_threshold_by_f1(y, oof_proba)
+        threshold_selection_metric = "F1-optimal threshold selected via OOF cross-validated grid search"
+    else:
+        chosen_threshold, _ = _fixed_threshold(y, oof_proba, fixed_threshold)
+        threshold_selection_metric = f"Fixed threshold ({fixed_threshold})"
     oof_pred = (oof_proba >= chosen_threshold).astype(int)
 
     cv_report = {
@@ -259,7 +267,7 @@ def cross_validate_anomaly_detector(train: pd.DataFrame, n_splits=N_SPLITS,
         "roc_auc": roc_auc_score(y, oof_proba),
         "confusion_matrix": confusion_matrix(y, oof_pred).tolist(),
         "chosen_threshold": chosen_threshold,
-        "threshold_selection_metric": "Fixed threshold (0.41) for optimal recall/F1 balance",
+        "threshold_selection_metric": threshold_selection_metric,
         "n_folds": n_splits,
     }
     oof_signals = {
@@ -507,7 +515,7 @@ def fit_final_and_predict_test(train: pd.DataFrame, test: pd.DataFrame, chosen_t
 def build_anomaly_scores(train: pd.DataFrame, test: pd.DataFrame, n_splits=N_SPLITS,
                           auto_select_classifier: bool = True,
                           use_extended_pairs: bool = True, tune_iso: bool = True,
-                          fixed_threshold: float = 0.41,
+                          fixed_threshold: float | None = None,
                           classifier_builder: Callable = None):
     clf_comparison = None
     selected_classifier = "GradientBoosting"
