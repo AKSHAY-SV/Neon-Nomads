@@ -149,10 +149,41 @@ def _candidate_models() -> Dict[str, Any]:
             l2_regularization=1.0,
             random_state=RANDOM_STATE,
         )),
+        ("xgb", XGBRegressor(
+            n_estimators=N_ESTIMATORS,
+            max_depth=4,
+            learning_rate=0.04,
+            subsample=0.85,
+            colsample_bytree=0.85,
+            reg_alpha=0.1,
+            reg_lambda=1.0,
+            random_state=RANDOM_STATE,
+            n_jobs=-1,
+            verbosity=0,
+        )),
+        ("lgb", LGBMRegressor(
+            n_estimators=N_ESTIMATORS,
+            learning_rate=0.04,
+            num_leaves=24,
+            subsample=0.85,
+            colsample_bytree=0.85,
+            reg_alpha=0.1,
+            reg_lambda=1.0,
+            random_state=RANDOM_STATE,
+            verbosity=-1,
+        )),
+        ("cat", CatBoostRegressor(
+            iterations=N_ESTIMATORS,
+            depth=5,
+            learning_rate=0.04,
+            l2_leaf_reg=3.0,
+            random_state=RANDOM_STATE,
+            verbose=False,
+        )),
     ]
     models["VotingEnsemble"] = VotingRegressor(
         estimators=ensemble_estimators,
-        weights=[0.45, 0.30, 0.25],
+        weights=[0.30, 0.20, 0.15, 0.15, 0.10, 0.10],
     )
 
     return models

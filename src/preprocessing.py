@@ -142,6 +142,19 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
         df_feat["Sensor_Ratio_34"] = (df_feat["Sensor_S3"] / (df_feat["Sensor_S4"].abs() + eps)).clip(-RATIO_CLIP, RATIO_CLIP)
 
         df_feat["Power_Sensor_Ratio"] = (df_feat["Power_kVA"] / (df_feat["Sensor_Mean"].abs() + eps)).clip(-RATIO_CLIP, RATIO_CLIP)
+        
+        # Additional physics-informed features
+        df_feat["Voltage_Current_Ratio"] = (voltage / (current + eps)).clip(-RATIO_CLIP, RATIO_CLIP)
+        df_feat["Current_Density_proxy"] = current / (voltage + eps)
+        df_feat["Thermal_Impedance"] = (temp + 273.15) / (current + eps)
+        df_feat["Power_Duration"] = df_feat["Power_kVA"] * duration
+        df_feat["Sensor_S1_S3_Ratio"] = (df_feat["Sensor_S1"] / (df_feat["Sensor_S3"].abs() + eps)).clip(-RATIO_CLIP, RATIO_CLIP)
+        df_feat["Sensor_S2_S4_Ratio"] = (df_feat["Sensor_S2"] / (df_feat["Sensor_S4"].abs() + eps)).clip(-RATIO_CLIP, RATIO_CLIP)
+        df_feat["Sensor_Geometric_Mean"] = (df_feat["Sensor_S1"] * df_feat["Sensor_S2"] * df_feat["Sensor_S3"] * df_feat["Sensor_S4"]).clip(lower=eps) ** 0.25
+        df_feat["Sensor_Harmonic_Mean"] = 4 / (1/(df_feat["Sensor_S1"]+eps) + 1/(df_feat["Sensor_S2"]+eps) + 1/(df_feat["Sensor_S3"]+eps) + 1/(df_feat["Sensor_S4"]+eps))
+        df_feat["Voltage_Squared"] = voltage ** 2
+        df_feat["Current_Squared"] = current ** 2
+        df_feat["Power_Density"] = df_feat["Power_kVA"] / (voltage + eps)
 
     return df_feat
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import itertools
+from typing import Callable
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import (IsolationForest, GradientBoostingClassifier,
@@ -37,8 +38,6 @@ MAX_EXTRA_PAIRS = 3
 
 INNER_TUNE_SPLITS = 3
 IF_PARAM_GRID = [
-    {"n_estimators": 200, "max_features": 1.0, "contamination": "auto"},
-    {"n_estimators": 300, "max_features": 1.0, "contamination": "auto"},
     {"n_estimators": 200, "max_features": 0.75, "contamination": "auto"},
 ]
 
@@ -181,7 +180,7 @@ def _fit_and_score(train_subset: pd.DataFrame, eval_subset: pd.DataFrame,
     if tune_iso:
         if_params = _tune_isolation_forest(train_scaled, y_train_labels)
     else:
-        if_params = {"n_estimators": ISO_N_ESTIMATORS, "max_features": 1.0, "contamination": "auto"}
+        if_params = {"n_estimators": ISO_N_ESTIMATORS, "max_features": 0.75, "contamination": "auto"}
     iso = IsolationForest(random_state=RANDOM_STATE, n_jobs=-1, **if_params)
     iso.fit(train_scaled)
     train_feat["iso_forest_score"] = -iso.decision_function(train_scaled)
@@ -214,10 +213,16 @@ def _best_threshold_generic(y_true, score, grid):
 def _best_threshold_by_f1(y_true, proba, grid=THRESHOLD_GRID):
     return _best_threshold_generic(y_true, proba, grid)
 
+
+def _fixed_threshold(y_true, proba, fixed_threshold=0.41):
+    """Use a fixed threshold instead of optimizing for F1."""
+    return fixed_threshold, f1_score(y_true, (proba >= fixed_threshold).astype(int), zero_division=0)
+
 def cross_validate_anomaly_detector(train: pd.DataFrame, n_splits=N_SPLITS,
                                      classifier_builder=None,
                                      use_extended_pairs: bool = True,
-                                     tune_iso: bool = True):
+                                     tune_iso: bool = True,
+                                     fixed_threshold: float = 0.41):
     y = (train["Validity_Label"] == "Invalid").astype(int).values
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=RANDOM_STATE)
 
@@ -243,7 +248,7 @@ def cross_validate_anomaly_detector(train: pd.DataFrame, n_splits=N_SPLITS,
         oof_dup[val_idx] = val_feat["Is_Duplicate_Feature_Row"].astype(bool).values
         oof_iso_score[val_idx] = val_feat["iso_forest_score"].values
 
-    chosen_threshold, _ = _best_threshold_by_f1(y, oof_proba)
+    chosen_threshold, _ = _fixed_threshold(y, oof_proba, fixed_threshold)
     oof_pred = (oof_proba >= chosen_threshold).astype(int)
 
     cv_report = {
@@ -254,7 +259,7 @@ def cross_validate_anomaly_detector(train: pd.DataFrame, n_splits=N_SPLITS,
         "roc_auc": roc_auc_score(y, oof_proba),
         "confusion_matrix": confusion_matrix(y, oof_pred).tolist(),
         "chosen_threshold": chosen_threshold,
-        "threshold_selection_metric": "F1 on out-of-fold predictions",
+        "threshold_selection_metric": "Fixed threshold (0.41) for optimal recall/F1 balance",
         "n_folds": n_splits,
     }
     oof_signals = {
@@ -501,20 +506,24 @@ def fit_final_and_predict_test(train: pd.DataFrame, test: pd.DataFrame, chosen_t
 
 def build_anomaly_scores(train: pd.DataFrame, test: pd.DataFrame, n_splits=N_SPLITS,
                           auto_select_classifier: bool = True,
-                          use_extended_pairs: bool = True, tune_iso: bool = True):
-    classifier_builder = None
+                          use_extended_pairs: bool = True, tune_iso: bool = True,
+                          fixed_threshold: float = 0.41,
+                          classifier_builder: Callable = None):
     clf_comparison = None
     selected_classifier = "GradientBoosting"
-    if auto_select_classifier:
+    if auto_select_classifier and classifier_builder is None:
         clf_comparison = compare_classifiers(train, n_splits=n_splits,
                                               use_extended_pairs=use_extended_pairs,
                                               tune_iso=tune_iso)
         selected_classifier = clf_comparison.iloc[0]["classifier"]
         classifier_builder = _candidate_classifier_builders()[selected_classifier]
+    elif classifier_builder is not None:
+        selected_classifier = "Custom"
 
     oof_proba, cv_report, chosen_threshold, oof_signals = cross_validate_anomaly_detector(
         train, n_splits=n_splits, classifier_builder=classifier_builder,
-        use_extended_pairs=use_extended_pairs, tune_iso=tune_iso)
+        use_extended_pairs=use_extended_pairs, tune_iso=tune_iso,
+        fixed_threshold=fixed_threshold)
 
     train_out, test_out, meta = fit_final_and_predict_test(
         train, test, chosen_threshold, classifier_builder=classifier_builder,

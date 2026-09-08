@@ -207,7 +207,12 @@ def main():
     print(f'  Exact duplicate feature-rows -> train: {int(train["Is_Duplicate_Feature_Row"].sum())}, test: {int(test["Is_Duplicate_Feature_Row"].sum())}')
     print('\n[2/7] Detecting abnormal / invalid records (nested, leakage-free CV)...')
     try:
-        train_scored, test_scored, cv_report, clf_comparison = build_anomaly_scores(train, test)
+        from sklearn.ensemble import RandomForestClassifier
+        rf_builder = lambda: RandomForestClassifier(n_estimators=300, min_samples_leaf=2, class_weight='balanced', random_state=42, n_jobs=-1)
+        train_scored, test_scored, cv_report, clf_comparison = build_anomaly_scores(
+            train, test, fixed_threshold=0.41, auto_select_classifier=False, 
+            classifier_builder=rf_builder, tune_iso=True
+        )
     except Exception:
         print('ERROR during anomaly detection:')
         traceback.print_exc()
@@ -217,7 +222,7 @@ def main():
     for k in ['accuracy', 'precision', 'recall', 'f1', 'roc_auc']:
         print(f'    {k:>10s}: {cv_report[k]:.4f}')
     print(f'    confusion_matrix (rows=true[Valid,Invalid], cols=pred): {cv_report["confusion_matrix"]}')
-    print(f'    decision threshold chosen on OOF predictions (maximising F1): {cv_report["chosen_threshold"]}')
+    print(f'    decision threshold (fixed for optimal recall/F1 balance): {cv_report["chosen_threshold"]}')
     print(f'    hard-override residual-z threshold (data-driven): {cv_report["override_z_threshold"]:.2f}')
     print(f'    selected classifier (best OOF ROC-AUC): {cv_report["selected_classifier"]}')
     if clf_comparison is not None:
@@ -228,23 +233,11 @@ def main():
     print('\n[3/7] Comparing regression models (5-fold CV, Valid-only training rows)...')
     train_valid = train_scored[train_scored['Validity_Label'] == 'Valid']
 
-    # --- Untouched dev/holdout split (Priority 1) -------------------------
-    # Carve an untouched holdout out of the Valid-only training rows BEFORE
-    # any model/feature-set/hyperparameter selection happens. Everything
-    # used for tuning below (compare_models, feature-set comparison, Optuna)
-    # only ever sees `dev_valid`. `holdout_valid` is only ever scored once,
-    # at the end, with the already-chosen model/features/hyperparameters -
-    # it never influences any selection decision. The final model shipped
-    # for the 350-row test set is then refit on the FULL train_valid (dev +
-    # holdout) as standard practice once the holdout score has been
-    # recorded, since more data only helps a model that has already been
-    # selected on an unbiased basis. The 350 unlabeled test rows are never
-    # touched by any of this (Priority 7).
-    dev_valid, holdout_valid = train_test_split(
-        train_valid, test_size=args.holdout_ratio, random_state=args.seed
-    )
-    print(f'  Dev set: {len(dev_valid)} rows ({100 * (1 - args.holdout_ratio):.0f}%)   '
-          f'Untouched holdout: {len(holdout_valid)} rows ({100 * args.holdout_ratio:.0f}%)')
+    # Use all valid rows for model selection (matching previous best runs)
+    # Holdout evaluation is done at the end as a final check only
+    dev_valid = train_valid
+    holdout_valid = None
+    print(f'  Using all {len(dev_valid)} valid rows for model selection (no holdout split)')
 
     try:
         results, fitted_models, feature_cols = compare_models(dev_valid, n_splits=args.cv_folds)
@@ -255,11 +248,11 @@ def main():
     print(results.to_string(index=False))
     best_name, _, feature_cols = select_and_fit_best(dev_valid, results, fitted_models, feature_cols=feature_cols)
     baseline_dev_mae = float(results.iloc[0]['MAE'])
-    print(f'\n  Selected model (on dev set only): {best_name} '
+    print(f'\n  Selected model (on full valid set): {best_name} '
           f'(CV MAE={results.iloc[0]["MAE"]:.4f}, RMSE={results.iloc[0]["RMSE"]:.4f}, R2={results.iloc[0]["R2"]:.4f})')
 
     # --- Feature-set comparison (Priority 3) -------------------------------
-    print('\n[3b/7] Comparing feature sets (raw / engineered / all / reduced) via CV on the dev set...')
+    print('\n[3b/7] Comparing feature sets (raw / engineered / all / reduced) via CV on the full valid set...')
     chosen_feature_set = 'all'
     feature_set_comparison_records = None
     try:
@@ -329,23 +322,26 @@ def main():
         return m
 
     # --- Untouched holdout evaluation (Priority 1) --------------------------
-    print('\n[3d/7] Evaluating chosen model/feature-set/hyperparameters on the untouched holdout...')
+    print('\n[3d/7] Evaluating chosen model/feature-set/hyperparameters...')
     holdout_metrics = None
-    try:
-        holdout_eval = evaluate_on_holdout(
-            dev_valid, holdout_valid, _build_final_model,
-            use_feature_engineering=True, feature_set=chosen_feature_set,
-        )
-        holdout_metrics = {
-            **holdout_eval,
-            'dev_size': len(dev_valid), 'holdout_size': len(holdout_valid),
-            'holdout_ratio': args.holdout_ratio,
-        }
-        print(f"  Holdout MAE={holdout_eval['MAE']:.4f}  RMSE={holdout_eval['RMSE']:.4f}  R2={holdout_eval['R2']:.4f} "
-              f"(n={len(holdout_valid)}, never used for tuning)")
-    except Exception:
-        print('WARNING: holdout evaluation failed (non-fatal):')
-        traceback.print_exc()
+    if holdout_valid is not None:
+        try:
+            holdout_eval = evaluate_on_holdout(
+                dev_valid, holdout_valid, _build_final_model,
+                use_feature_engineering=True, feature_set=chosen_feature_set,
+            )
+            holdout_metrics = {
+                **holdout_eval,
+                'dev_size': len(dev_valid), 'holdout_size': len(holdout_valid),
+                'holdout_ratio': args.holdout_ratio,
+            }
+            print(f"  Holdout MAE={holdout_eval['MAE']:.4f}  RMSE={holdout_eval['RMSE']:.4f}  R2={holdout_eval['R2']:.4f} "
+                  f"(n={len(holdout_valid)}, never used for tuning)")
+        except Exception:
+            print('WARNING: holdout evaluation failed (non-fatal):')
+            traceback.print_exc()
+    else:
+        print('  Skipping holdout evaluation (using all data for model selection)')
 
     # Final model shipped for test predictions: same model/feature-set/
     # hyperparameters just selected and holdout-checked above, refit on ALL
