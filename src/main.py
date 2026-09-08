@@ -207,11 +207,12 @@ def main():
     print(f'  Exact duplicate feature-rows -> train: {int(train["Is_Duplicate_Feature_Row"].sum())}, test: {int(test["Is_Duplicate_Feature_Row"].sum())}')
     print('\n[2/7] Detecting abnormal / invalid records (nested, leakage-free CV)...')
     try:
-        from sklearn.ensemble import RandomForestClassifier
-        rf_builder = lambda: RandomForestClassifier(n_estimators=300, min_samples_leaf=2, class_weight='balanced', random_state=42, n_jobs=-1)
+        # Leakage-free: candidate classifiers and the decision threshold are
+        # both chosen purely from out-of-fold cross-validation on the
+        # training set (see cross_validate_anomaly_detector / compare_classifiers
+        # in anomaly_detection.py) - the test set is never touched here.
         train_scored, test_scored, cv_report, clf_comparison = build_anomaly_scores(
-            train, test, fixed_threshold=0.41, auto_select_classifier=False, 
-            classifier_builder=rf_builder, tune_iso=True
+            train, test, auto_select_classifier=True, tune_iso=True
         )
     except Exception:
         print('ERROR during anomaly detection:')
