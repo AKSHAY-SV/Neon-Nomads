@@ -17,7 +17,6 @@ FEATURE_COLS = [
     "Test_Duration_min", "Sensor_S1", "Sensor_S2", "Sensor_S3", "Sensor_S4",
 ]
 
-
 BASE_CONSISTENCY_PAIRS = [
     ("Applied_Voltage_kV", "Sensor_S1"),
     ("Applied_Voltage_kV", "Sensor_S3"),
@@ -28,19 +27,16 @@ RANDOM_STATE = 42
 N_SPLITS = 5
 ISO_N_ESTIMATORS = 200
 GB_N_ESTIMATORS = 150
-RESIDUAL_Z_MARGIN = 1.5
+RESIDUAL_Z_MARGIN = 1.3  # Lowered from 1.5 to catch more hard physical violations
 THRESHOLD_GRID = np.round(np.arange(0.05, 0.96, 0.02), 2)
-
 
 EXTRA_PAIR_CORR_THRESHOLD = 0.6
 MAX_EXTRA_PAIRS = 3
-
 
 INNER_TUNE_SPLITS = 3
 IF_PARAM_GRID = [
     {"n_estimators": 200, "max_features": 0.75, "contamination": "auto"},
 ]
-
 
 def _fit_consistency_line(valid_rows: pd.DataFrame, x: str, y: str):
     mask = valid_rows[[x, y]].notna().all(axis=1)
@@ -100,7 +96,6 @@ def _hard_override_threshold(fitted_lines: dict) -> float:
     max_zs = [v[3] for v in fitted_lines.values()]
     return max(max_zs) + RESIDUAL_Z_MARGIN
 
-
 def _tune_isolation_forest(X: np.ndarray, y: np.ndarray, random_state: int = RANDOM_STATE,
                             inner_splits: int = INNER_TUNE_SPLITS, grid=None):
     grid = grid if grid is not None else IF_PARAM_GRID
@@ -129,7 +124,6 @@ def _tune_isolation_forest(X: np.ndarray, y: np.ndarray, random_state: int = RAN
             if mean_auc > best_score:
                 best_score, best_params = mean_auc, params
     return best_params
-
 
 def _candidate_classifier_builders():
     builders = {
@@ -161,16 +155,24 @@ def _candidate_classifier_builders():
         pass
     return builders
 
-
 def _fit_and_score(train_subset: pd.DataFrame, eval_subset: pd.DataFrame,
                     classifier_builder=None, use_extended_pairs: bool = True,
                     tune_iso: bool = True):
     fitted_lines = fit_physical_consistency(train_subset, use_extended_pairs=use_extended_pairs)
     train_feat = add_consistency_features(train_subset, fitted_lines)
     eval_feat = add_consistency_features(eval_subset, fitted_lines)
+    
+    # INTEGRATION: Engineer features for the classifier to catch multivariate anomalies
+    from preprocessing import engineer_features
+    train_feat = engineer_features(train_feat)
+    eval_feat = engineer_features(eval_feat)
+    
     resid_cols = _resid_z_cols(fitted_lines)
+    
+    # High-value engineered columns to assist IF and the Classifier
+    eng_cols = ["Power_kVA", "Impedance_proxy", "Thermal_Load", "Sensor_Spread", "Sensor_Mean", "Sensor_Diff_12", "Sensor_Diff_34"]
 
-    iso_cols = FEATURE_COLS + resid_cols
+    iso_cols = FEATURE_COLS + eng_cols + resid_cols
     scaler = StandardScaler()
     train_scaled = scaler.fit_transform(train_feat[iso_cols])
     eval_scaled = scaler.transform(eval_feat[iso_cols])
@@ -186,7 +188,7 @@ def _fit_and_score(train_subset: pd.DataFrame, eval_subset: pd.DataFrame,
     train_feat["iso_forest_score"] = -iso.decision_function(train_scaled)
     eval_feat["iso_forest_score"] = -iso.decision_function(eval_scaled)
 
-    clf_cols = FEATURE_COLS + resid_cols + ["iso_forest_score", "Is_Duplicate_Feature_Row"]
+    clf_cols = FEATURE_COLS + eng_cols + resid_cols + ["iso_forest_score", "Is_Duplicate_Feature_Row"]
     X_train = train_feat[clf_cols].astype(float).values
     X_eval = eval_feat[clf_cols].astype(float).values
 
@@ -212,7 +214,6 @@ def _best_threshold_generic(y_true, score, grid):
 
 def _best_threshold_by_f1(y_true, proba, grid=THRESHOLD_GRID):
     return _best_threshold_generic(y_true, proba, grid)
-
 
 def _fixed_threshold(y_true, proba, fixed_threshold=0.41):
     """Use a fixed threshold instead of optimizing for F1."""
@@ -249,9 +250,6 @@ def cross_validate_anomaly_detector(train: pd.DataFrame, n_splits=N_SPLITS,
         oof_iso_score[val_idx] = val_feat["iso_forest_score"].values
 
     if fixed_threshold is None:
-        # Leakage-free: threshold is swept over out-of-fold probabilities only
-        # (never touches the held-out fold's labels during fitting), so this
-        # search is purely an OOF-CV decision, not a source of leakage.
         chosen_threshold, _ = _best_threshold_by_f1(y, oof_proba)
         threshold_selection_metric = "F1-optimal threshold selected via OOF cross-validated grid search"
     else:
@@ -329,28 +327,9 @@ def ablation_study(train: pd.DataFrame, n_splits=N_SPLITS, classifier_builder=No
 
     return pd.DataFrame(rows).T
 
-
 def perturbation_testing(train: pd.DataFrame, test: pd.DataFrame, n_trials: int = 10,
                         noise_level: float = 0.01, random_state: int = RANDOM_STATE,
                         n_splits: int = 3, tune_iso: bool = False) -> pd.DataFrame:
-    """Run perturbation robustness tests on the anomaly detection pipeline.
-    
-    Tests model behavior under controlled perturbations of the training data:
-    - Small Gaussian noise
-    - Small sensor perturbations
-    - Missing feature values
-    - Extreme but plausible values
-    - Duplicated records
-    - Borderline anomaly records
-
-    `n_splits`/`tune_iso` are kept lighter than the main pipeline's
-    defaults (3 folds, no inner Isolation-Forest tuning) so that repeating
-    this across scenarios and trials stays fast enough for a laptop/Colab
-    run; the *relative* F1 drop under each perturbation is what matters
-    here, not squeezing out the last bit of absolute accuracy.
-    
-    Returns DataFrame with results for each trial.
-    """
     y = (train["Validity_Label"] == "Invalid").astype(int).values
     
     from sklearn.model_selection import StratifiedKFold
@@ -362,13 +341,11 @@ def perturbation_testing(train: pd.DataFrame, test: pd.DataFrame, n_trials: int 
         np.random.seed(random_state + trial)
         trial_noise_results = {}
         
-        # Test 1: Small Gaussian noise on features
         train_noisy = train.copy()
         for col in FEATURE_COLS:
             if col in train_noisy.columns:
                 train_noisy[col] = train_noisy[col] + np.random.normal(0, noise_level, len(train_noisy))
         
-        # Run cross-validation on noisy data
         from anomaly_detection import cross_validate_anomaly_detector
         try:
             _, cv_report_noisy, _, _ = cross_validate_anomaly_detector(
@@ -381,7 +358,6 @@ def perturbation_testing(train: pd.DataFrame, test: pd.DataFrame, n_trials: int 
         except Exception as e:
             trial_noise_results['gaussian_noise'] = {'f1': float('nan'), 'error': str(e)}
         
-        # Test 2: Sensor S2 perturbation (add small offset)
         train_s2 = train.copy()
         train_s2['Sensor_S2'] = train_s2['Sensor_S2'] + np.random.normal(0, noise_level * 10, len(train_s2))
         
@@ -396,7 +372,6 @@ def perturbation_testing(train: pd.DataFrame, test: pd.DataFrame, n_trials: int 
         except Exception as e:
             trial_noise_results['s2_perturbation'] = {'f1': float('nan'), 'error': str(e)}
         
-        # Test 3: Missing feature values (randomly set some to NaN, then impute)
         train_missing = train.copy()
         n_missing = max(1, int(len(train_missing) * 0.05))
         missing_cols = np.random.choice(FEATURE_COLS, size=min(n_missing, len(FEATURE_COLS)), replace=False)
@@ -404,7 +379,6 @@ def perturbation_testing(train: pd.DataFrame, test: pd.DataFrame, n_trials: int 
             idx = np.random.choice(len(train_missing), size=1, replace=False)[0]
             train_missing.loc[idx, col] = np.nan
         
-        # Impute missing values
         from preprocessing import build_feature_pipeline
         pipeline = build_feature_pipeline(n_neighbors=7)
         train_missing_imp = pipeline.fit_transform(train_missing[FEATURE_COLS])
@@ -421,7 +395,6 @@ def perturbation_testing(train: pd.DataFrame, test: pd.DataFrame, n_trials: int 
         except Exception as e:
             trial_noise_results['missing_values'] = {'f1': float('nan'), 'error': str(e)}
         
-        # Test 4: Extreme but plausible values (set Sensor_S1 to max plausible value)
         train_extreme = train.copy()
         train_extreme['Sensor_S1'] = 199.9  # Max plausible value
         
@@ -436,13 +409,11 @@ def perturbation_testing(train: pd.DataFrame, test: pd.DataFrame, n_trials: int 
         except Exception as e:
             trial_noise_results['extreme_values'] = {'f1': float('nan'), 'error': str(e)}
         
-        # Test 5: Duplicate records (add exact duplicate rows)
         n_dup = max(1, int(len(train_extreme) * 0.02))
         dup_indices = np.random.choice(len(train_extreme), size=n_dup, replace=False)
         dup_rows = train_extreme.iloc[dup_indices].copy()
         train_dup = pd.concat([train_extreme, dup_rows], ignore_index=True)
         
-        # Need to re-add Is_Duplicate_Feature_Row
         from preprocessing import flag_exact_duplicate_features
         train_dup['Is_Duplicate_Feature_Row'] = flag_exact_duplicate_features(train_dup)
         
@@ -457,8 +428,6 @@ def perturbation_testing(train: pd.DataFrame, test: pd.DataFrame, n_trials: int 
         except Exception as e:
             trial_noise_results['duplicates'] = {'f1': float('nan'), 'error': str(e)}
         
-        # Test 6: Borderline anomaly records (records near the threshold)
-        # These are records with classifier probability near the chosen threshold
         try:
             from anomaly_detection import build_anomaly_scores
             train_out, test_out, cv_report_borderline, _ = build_anomaly_scores(
@@ -488,7 +457,15 @@ def fit_final_and_predict_test(train: pd.DataFrame, test: pd.DataFrame, chosen_t
      clf_cols, resid_cols, if_params) = result
 
     train_feat = add_consistency_features(train, fitted_lines)
-    train_iso_cols = FEATURE_COLS + resid_cols
+    
+    # INTEGRATION: Engineer features on the full final train set
+    from preprocessing import engineer_features
+    train_feat = engineer_features(train_feat)
+    
+    # Dynamically grab the engineered columns we injected in _fit_and_score
+    eng_cols = [c for c in clf_cols if c not in FEATURE_COLS + resid_cols + ["iso_forest_score", "Is_Duplicate_Feature_Row"]]
+    
+    train_iso_cols = FEATURE_COLS + eng_cols + resid_cols
     train_scaled = scaler.transform(train_feat[train_iso_cols])
     train_feat["iso_forest_score"] = -iso.decision_function(train_scaled)
     train_feat["clf_proba_invalid"] = clf.predict_proba(train_feat[clf_cols].astype(float).values)[:, 1]
@@ -547,11 +524,10 @@ if __name__ == "__main__":
     sys.path.insert(0, ".")
     from preprocessing import load_and_clean, verify_duplicate_logic
 
-    tr, te = load_and_clean("../data/training_data.csv", "../data/test_data.csv")
+    tr, te, _ = load_and_clean("../data/training_data.csv", "../data/test_data.csv")
     print("Duplicate-logic verification (train):")
     for k, v in verify_duplicate_logic(tr).items():
         print(f"  {k}: {v}")
-
 
     print("\n" + "=" * 70)
     print("BEFORE (previous design): 3 fixed pairs, fixed Isolation Forest, "
@@ -564,7 +540,6 @@ if __name__ == "__main__":
         print(f"  {k:>10s}: {baseline_report[k]:.4f}")
     print(f"  chosen_threshold: {baseline_threshold}")
 
-
     print("\n" + "=" * 70)
     print("Classifier comparison (data-driven consistency pairs + tuned Isolation Forest)")
     print("=" * 70)
@@ -572,7 +547,6 @@ if __name__ == "__main__":
     print(clf_comparison.to_string(index=False))
     best_name = clf_comparison.iloc[0]["classifier"]
     best_builder = _candidate_classifier_builders()[best_name]
-
 
     print("\n" + "=" * 70)
     print(f"AFTER (improved design, selected classifier = {best_name})")
@@ -583,13 +557,11 @@ if __name__ == "__main__":
         print(f"  {k:>10s}: {improved_report[k]:.4f}")
     print(f"  chosen_threshold: {improved_threshold}")
 
-
     print("\n" + "=" * 70)
     print("Ablation study (OOF, improved features + selected classifier)")
     print("=" * 70)
     ablation = ablation_study(tr, classifier_builder=best_builder)
     print(ablation.to_string())
-
 
     print("\n" + "=" * 70)
     print("Final fit on full training set -> test set predictions")
