@@ -76,6 +76,7 @@ def _candidate_models() -> Dict[str, Any]:
         ),
     }
 
+    xgb_available = False
     try:
         from xgboost import XGBRegressor
         models["XGBoost"] = XGBRegressor(
@@ -90,9 +91,11 @@ def _candidate_models() -> Dict[str, Any]:
             n_jobs=-1,
             verbosity=0,
         )
+        xgb_available = True
     except ImportError:
         pass
 
+    lgb_available = False
     try:
         from lightgbm import LGBMRegressor
         models["LightGBM"] = LGBMRegressor(
@@ -106,9 +109,11 @@ def _candidate_models() -> Dict[str, Any]:
             random_state=RANDOM_STATE,
             verbosity=-1,
         )
+        lgb_available = True
     except ImportError:
         pass
 
+    cat_available = False
     try:
         from catboost import CatBoostRegressor
         models["CatBoost"] = CatBoostRegressor(
@@ -119,6 +124,7 @@ def _candidate_models() -> Dict[str, Any]:
             random_state=RANDOM_STATE,
             verbose=False,
         )
+        cat_available = True
     except ImportError:
         pass
 
@@ -149,7 +155,11 @@ def _candidate_models() -> Dict[str, Any]:
             l2_regularization=1.0,
             random_state=RANDOM_STATE,
         )),
-        ("xgb", XGBRegressor(
+    ]
+    ensemble_weights = [0.30, 0.20, 0.15]
+
+    if xgb_available:
+        ensemble_estimators.append(("xgb", XGBRegressor(
             n_estimators=N_ESTIMATORS,
             max_depth=4,
             learning_rate=0.04,
@@ -160,8 +170,11 @@ def _candidate_models() -> Dict[str, Any]:
             random_state=RANDOM_STATE,
             n_jobs=-1,
             verbosity=0,
-        )),
-        ("lgb", LGBMRegressor(
+        )))
+        ensemble_weights.append(0.15)
+
+    if lgb_available:
+        ensemble_estimators.append(("lgb", LGBMRegressor(
             n_estimators=N_ESTIMATORS,
             learning_rate=0.04,
             num_leaves=24,
@@ -171,19 +184,23 @@ def _candidate_models() -> Dict[str, Any]:
             reg_lambda=1.0,
             random_state=RANDOM_STATE,
             verbosity=-1,
-        )),
-        ("cat", CatBoostRegressor(
+        )))
+        ensemble_weights.append(0.10)
+
+    if cat_available:
+        ensemble_estimators.append(("cat", CatBoostRegressor(
             iterations=N_ESTIMATORS,
             depth=5,
             learning_rate=0.04,
             l2_leaf_reg=3.0,
             random_state=RANDOM_STATE,
             verbose=False,
-        )),
-    ]
+        )))
+        ensemble_weights.append(0.10)
+
     models["VotingEnsemble"] = VotingRegressor(
         estimators=ensemble_estimators,
-        weights=[0.30, 0.20, 0.15, 0.15, 0.10, 0.10],
+        weights=ensemble_weights,
     )
 
     return models
