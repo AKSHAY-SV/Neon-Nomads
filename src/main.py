@@ -42,6 +42,7 @@ def parse_args():
     p.add_argument('--holdout', action='store_true', help='Use untouched holdout evaluation')
     p.add_argument('--ablation', action='store_true', help='Run feature ablation study')
     p.add_argument('--holdout-seed', type=int, default=None, help='Seed for holdout split')
+    p.add_argument('--fixed-threshold', type=float, default=None, help='Fixed classification threshold for anomaly detection (overrides F1-optimal)')
     return p.parse_args()
 
 
@@ -212,7 +213,8 @@ def main():
         # training set (see cross_validate_anomaly_detector / compare_classifiers
         # in anomaly_detection.py) - the test set is never touched here.
         train_scored, test_scored, cv_report, clf_comparison = build_anomaly_scores(
-            train, test, auto_select_classifier=True, tune_iso=True
+            train, test, auto_select_classifier=True, tune_iso=True,
+            fixed_threshold=args.fixed_threshold
         )
     except Exception:
         print('ERROR during anomaly detection:')
@@ -241,7 +243,7 @@ def main():
     print(f'  Using all {len(dev_valid)} valid rows for model selection (no holdout split)')
 
     try:
-        results, fitted_models, feature_cols = compare_models(dev_valid, n_splits=args.cv_folds)
+        results, fitted_models, feature_cols = compare_models(dev_valid, n_splits=args.cv_folds, feature_set=args.feature_set)
     except Exception:
         print('ERROR during model comparison:')
         traceback.print_exc()

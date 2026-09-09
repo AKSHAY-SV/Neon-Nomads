@@ -1,21 +1,17 @@
 {
-  "generated_at_utc": "2026-09-08T22:45:14.662831+00:00",
-  "team_name": "Neon Nomads",
-  "records_analysed": 350,
-  "abnormal_invalid_count": 39,
-  "abnormal_invalid_percentage": 11.14,
-  "predicted_reference_parameter": {
-    "minimum": 12.8857,
-    "maximum": 55.8223,
-    "average": 26.3109
-  },
-  "test_ids_requiring_highest_attention": [
-    "TST-0258",
-    "TST-0178",
-    "TST-0142"
-  ],
-  "model_selection": {
-    "selected_model": "CatBoost",
+  "run_id": "run_021",
+  "generated_at_utc": "2026-09-08T22:38:00.223480+00:00",
+  "reference_parameter_model": {
+    "name": "CatBoost",
+    "parameters": {
+      "iterations": 300,
+      "learning_rate": 0.04,
+      "depth": 5,
+      "l2_leaf_reg": 3.0,
+      "loss_function": "RMSE",
+      "verbose": false,
+      "random_state": 42
+    },
     "feature_set": "raw_only",
     "feature_set_comparison": [
       {
@@ -69,10 +65,10 @@
         "R2_std": 0.003633033385926912
       }
     ],
-    "holdout_evaluation": null,
-    "cv_mae": 0.43,
-    "cv_rmse": 0.6763,
-    "cv_r2": 0.996,
+    "cv_folds": 5,
+    "MAE": 0.43,
+    "RMSE": 0.6763,
+    "R2": 0.996,
     "all_models_compared": [
       {
         "model": "CatBoost",
@@ -87,9 +83,9 @@
       {
         "model": "VotingEnsemble",
         "MAE": 0.44530256266341983,
-        "MAE_std": 0.014534740844132584,
-        "RMSE": 0.7717937121047973,
-        "RMSE_std": 0.16110922054494906,
+        "MAE_std": 0.014534740844132614,
+        "RMSE": 0.7717937121047972,
+        "RMSE_std": 0.16110922054494894,
         "R2": 0.9945564732387533,
         "R2_std": 0.0023771544521899715,
         "cv_folds": 5
@@ -136,22 +132,22 @@
       },
       {
         "model": "RandomForest",
-        "MAE": 0.6929750011532972,
-        "MAE_std": 0.03760240945292836,
+        "MAE": 0.6929750011532974,
+        "MAE_std": 0.037602409452928275,
         "RMSE": 1.25809511152558,
-        "RMSE_std": 0.14540334866805069,
+        "RMSE_std": 0.14540334866805085,
         "R2": 0.9860009662615343,
         "R2_std": 0.0033543456188024723,
         "cv_folds": 5
       },
       {
         "model": "ExtraTrees",
-        "MAE": 0.7096112350622847,
-        "MAE_std": 0.03670451306504208,
+        "MAE": 0.7096112350622849,
+        "MAE_std": 0.03670451306504217,
         "RMSE": 1.3386220507146482,
         "RMSE_std": 0.21877709001992657,
         "R2": 0.9839524015910557,
-        "R2_std": 0.005179910063956488,
+        "R2_std": 0.005179910063956513,
         "cv_folds": 5
       },
       {
@@ -165,29 +161,17 @@
         "cv_folds": 5
       }
     ],
-    "training_subset_used": "valid_only",
-    "training_subset_comparison": {
-      "valid_only": {
-        "n_rows": 866,
-        "MAE": 0.5429245648847028,
-        "RMSE": 0.8510104922317688,
-        "R2": 0.9936843457874273
-      },
-      "all_rows": {
-        "n_rows": 1000,
-        "MAE": 0.8895318029662115,
-        "RMSE": 2.2299161855729746,
-        "R2": 0.9563321556678175
-      }
-    },
-    "feature_ablation": {}
+    "holdout_evaluation": null
   },
-  "anomaly_detection_out_of_fold_performance_vs_historical_labels": {
+  "robustness_results": null,
+  "validity_classification_model": {
+    "name": "RandomForest",
+    "cv_folds": 5,
     "accuracy": 0.979,
-    "precision": 0.991304347826087,
-    "recall": 0.8507462686567164,
-    "f1": 0.9156626506024096,
-    "roc_auc": 0.9360156492364965,
+    "precision": 0.9913,
+    "recall": 0.8507,
+    "f1": 0.9157,
+    "roc_auc": 0.936,
     "confusion_matrix": [
       [
         865,
@@ -199,79 +183,81 @@
       ]
     ],
     "chosen_threshold": 0.6,
-    "threshold_selection_metric": "Fixed threshold (0.6)",
-    "n_folds": 5,
+    "classifier_comparison": [
+      {
+        "classifier": "RandomForest",
+        "accuracy": 0.98,
+        "precision": 0.9672131147540983,
+        "recall": 0.8805970149253731,
+        "f1": 0.921875,
+        "roc_auc": 0.9360156492364965,
+        "chosen_threshold": 0.51
+      },
+      {
+        "classifier": "XGBoost",
+        "accuracy": 0.977,
+        "precision": 0.9512195121951219,
+        "recall": 0.8731343283582089,
+        "f1": 0.9105058365758755,
+        "roc_auc": 0.9306383785460688,
+        "chosen_threshold": 0.25
+      },
+      {
+        "classifier": "GradientBoosting",
+        "accuracy": 0.981,
+        "precision": 0.967479674796748,
+        "recall": 0.8880597014925373,
+        "f1": 0.9260700389105059,
+        "roc_auc": 0.9244166005997725,
+        "chosen_threshold": 0.43
+      },
+      {
+        "classifier": "LogisticRegression",
+        "accuracy": 0.953,
+        "precision": 0.8918918918918919,
+        "recall": 0.7388059701492538,
+        "f1": 0.8081632653061225,
+        "roc_auc": 0.9243821309158596,
+        "chosen_threshold": 0.81
+      },
+      {
+        "classifier": "LightGBM",
+        "accuracy": 0.982,
+        "precision": 0.9915254237288136,
+        "recall": 0.8731343283582089,
+        "f1": 0.9285714285714286,
+        "roc_auc": 0.9221588363034711,
+        "chosen_threshold": 0.21
+      },
+      {
+        "classifier": "HistGradientBoosting",
+        "accuracy": 0.979,
+        "precision": 0.9829059829059829,
+        "recall": 0.8582089552238806,
+        "f1": 0.9163346613545816,
+        "roc_auc": 0.9143169832132639,
+        "chosen_threshold": 0.41
+      }
+    ]
+  },
+  "anomaly_detection_stats": {
     "override_z_threshold": 4.052191605562563,
-    "selected_classifier": "RandomForest",
     "isolation_forest_params": {
       "n_estimators": 200,
       "max_features": 0.75,
       "contamination": "auto"
-    }
+    },
+    "duplicate_logic_verification_train": {
+      "n_duplicate_rows": 24,
+      "n_duplicate_pairs": 12,
+      "n_duplicate_rows_labelled_invalid": 24,
+      "all_duplicates_invalid": true
+    },
+    "predicted_invalid_in_test": 39
   },
-  "anomaly_detection_classifier_comparison": [
-    {
-      "classifier": "RandomForest",
-      "accuracy": 0.98,
-      "precision": 0.9672131147540983,
-      "recall": 0.8805970149253731,
-      "f1": 0.921875,
-      "roc_auc": 0.9360156492364965,
-      "chosen_threshold": 0.51
-    },
-    {
-      "classifier": "XGBoost",
-      "accuracy": 0.977,
-      "precision": 0.9512195121951219,
-      "recall": 0.8731343283582089,
-      "f1": 0.9105058365758755,
-      "roc_auc": 0.9306383785460688,
-      "chosen_threshold": 0.25
-    },
-    {
-      "classifier": "GradientBoosting",
-      "accuracy": 0.981,
-      "precision": 0.967479674796748,
-      "recall": 0.8880597014925373,
-      "f1": 0.9260700389105059,
-      "roc_auc": 0.9244166005997725,
-      "chosen_threshold": 0.43
-    },
-    {
-      "classifier": "LogisticRegression",
-      "accuracy": 0.953,
-      "precision": 0.8918918918918919,
-      "recall": 0.7388059701492538,
-      "f1": 0.8081632653061225,
-      "roc_auc": 0.9243821309158596,
-      "chosen_threshold": 0.81
-    },
-    {
-      "classifier": "LightGBM",
-      "accuracy": 0.982,
-      "precision": 0.9915254237288136,
-      "recall": 0.8731343283582089,
-      "f1": 0.9285714285714286,
-      "roc_auc": 0.9221588363034711,
-      "chosen_threshold": 0.21
-    },
-    {
-      "classifier": "HistGradientBoosting",
-      "accuracy": 0.979,
-      "precision": 0.9829059829059829,
-      "recall": 0.8582089552238806,
-      "f1": 0.9163346613545816,
-      "roc_auc": 0.9143169832132639,
-      "chosen_threshold": 0.41
-    }
-  ],
-  "duplicate_logic_verification_train": {
-    "n_duplicate_rows": 24,
-    "n_duplicate_pairs": 12,
-    "n_duplicate_rows_labelled_invalid": 24,
-    "all_duplicates_invalid": true
+  "records": {
+    "training_records": 1000,
+    "test_records": 350
   },
-  "methodology_explanation": "Imputer/consistency-lines/scaler/Isolation-Forest/classifier fit only on training folds (no leakage); test data transformed only. Invalid records flagged via physical-consistency checks, duplicate-row detection, Isolation Forest and a classifier, threshold chosen by out-of-fold F1. Reference_Parameter predicted with the best cross-validated regressor (CatBoost) trained on verified rows.",
-  "methodology_explanation_word_count": 42,
-  "pipeline_runtime_seconds": 180.05
+  "note": "All metrics above are INTERNAL VALIDATION metrics computed via cross-validation on data/training_data.csv. data/test_data.csv has no ground truth and is not scored here."
 }

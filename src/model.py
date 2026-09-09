@@ -31,7 +31,7 @@ from preprocessing import (
 FEATURE_COLS = RAW_FEATURE_COLS
 
 RANDOM_STATE = 42
-N_ESTIMATORS = 450  # Increased for better convergence at lower learning rates
+N_ESTIMATORS = 300  # Matching run_009-012
 
 
 def _candidate_models() -> Dict[str, Any]:
@@ -58,9 +58,9 @@ def _candidate_models() -> Dict[str, Any]:
         ),
         "GradientBoosting": GradientBoostingRegressor(
             n_estimators=N_ESTIMATORS,
-            learning_rate=0.03,
-            max_depth=5,
-            min_samples_leaf=4,
+            learning_rate=0.04,
+            max_depth=4,
+            min_samples_leaf=3,
             subsample=0.85,
             max_features=0.9,
             loss="huber",
@@ -68,7 +68,7 @@ def _candidate_models() -> Dict[str, Any]:
         ),
         "HistGradientBoosting": HistGradientBoostingRegressor(
             max_iter=N_ESTIMATORS,
-            learning_rate=0.03,
+            learning_rate=0.04,
             max_leaf_nodes=31,
             min_samples_leaf=10,
             l2_regularization=1.0,
@@ -81,8 +81,8 @@ def _candidate_models() -> Dict[str, Any]:
         from xgboost import XGBRegressor
         models["XGBoost"] = XGBRegressor(
             n_estimators=N_ESTIMATORS,
-            max_depth=5,
-            learning_rate=0.03,
+            max_depth=4,
+            learning_rate=0.04,
             subsample=0.85,
             colsample_bytree=0.85,
             reg_alpha=0.1,
@@ -100,8 +100,8 @@ def _candidate_models() -> Dict[str, Any]:
         from lightgbm import LGBMRegressor
         models["LightGBM"] = LGBMRegressor(
             n_estimators=N_ESTIMATORS,
-            learning_rate=0.03,
-            num_leaves=31,
+            learning_rate=0.04,
+            num_leaves=24,
             subsample=0.85,
             colsample_bytree=0.85,
             reg_alpha=0.1,
@@ -118,9 +118,10 @@ def _candidate_models() -> Dict[str, Any]:
         from catboost import CatBoostRegressor
         models["CatBoost"] = CatBoostRegressor(
             iterations=N_ESTIMATORS,
-            depth=6,
-            learning_rate=0.03,
-            l2_leaf_reg=4.0,
+            depth=5,
+            learning_rate=0.04,
+            l2_leaf_reg=3.0,
+            loss_function='RMSE',
             random_state=RANDOM_STATE,
             verbose=False,
         )
@@ -128,25 +129,25 @@ def _candidate_models() -> Dict[str, Any]:
     except ImportError:
         pass
 
-    # Re-weighted to heavily favor the stronger tabular boosters
+    # Ensemble matching run_009-012: up to 6 models with weights [0.3, 0.2, 0.15, 0.15, 0.1, 0.1]
     ensemble_estimators = [
         ("gb", models["GradientBoosting"]),
         ("et", models["ExtraTrees"]),
         ("hgb", models["HistGradientBoosting"]),
     ]
-    ensemble_weights = [0.15, 0.05, 0.10] 
+    ensemble_weights = [0.3, 0.2, 0.15]
 
     if xgb_available:
         ensemble_estimators.append(("xgb", models["XGBoost"]))
-        ensemble_weights.append(0.25)
+        ensemble_weights.append(0.15)
 
     if lgb_available:
         ensemble_estimators.append(("lgb", models["LightGBM"]))
-        ensemble_weights.append(0.20)
+        ensemble_weights.append(0.1)
 
     if cat_available:
         ensemble_estimators.append(("cat", models["CatBoost"]))
-        ensemble_weights.append(0.25)
+        ensemble_weights.append(0.1)
 
     models["VotingEnsemble"] = VotingRegressor(
         estimators=ensemble_estimators,
