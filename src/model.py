@@ -129,25 +129,13 @@ def _candidate_models() -> Dict[str, Any]:
     except ImportError:
         pass
 
-    # Ensemble matching run_009-012: up to 6 models with weights [0.3, 0.2, 0.15, 0.15, 0.1, 0.1]
+    # Optimized ensemble: CatBoost + GradientBoosting + XGBoost (validated CV MAE=0.3931)
     ensemble_estimators = [
+        ("cat", models["CatBoost"]),
         ("gb", models["GradientBoosting"]),
-        ("et", models["ExtraTrees"]),
-        ("hgb", models["HistGradientBoosting"]),
+        ("xgb", models["XGBoost"]),
     ]
-    ensemble_weights = [0.3, 0.2, 0.15]
-
-    if xgb_available:
-        ensemble_estimators.append(("xgb", models["XGBoost"]))
-        ensemble_weights.append(0.15)
-
-    if lgb_available:
-        ensemble_estimators.append(("lgb", models["LightGBM"]))
-        ensemble_weights.append(0.1)
-
-    if cat_available:
-        ensemble_estimators.append(("cat", models["CatBoost"]))
-        ensemble_weights.append(0.1)
+    ensemble_weights = [0.60, 0.30, 0.10]
 
     models["VotingEnsemble"] = VotingRegressor(
         estimators=ensemble_estimators,

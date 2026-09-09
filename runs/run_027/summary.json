@@ -1,0 +1,263 @@
+{
+  "run_id": "run_027",
+  "generated_at_utc": "2026-09-09T07:41:22.656358+00:00",
+  "reference_parameter_model": {
+    "name": "CatBoost",
+    "parameters": {
+      "iterations": 300,
+      "learning_rate": 0.04,
+      "depth": 5,
+      "l2_leaf_reg": 3.0,
+      "loss_function": "RMSE",
+      "verbose": false,
+      "random_state": 42
+    },
+    "feature_set": "raw_only",
+    "feature_set_comparison": [
+      {
+        "feature_set": "raw_only",
+        "n_features": 8,
+        "MAE": 0.4300376637797,
+        "MAE_std": 0.024440412921751194,
+        "RMSE": 0.6763167280417,
+        "RMSE_std": 0.06937257719683648,
+        "R2": 0.995978041735421,
+        "R2_std": 0.0008462738628545549
+      },
+      {
+        "feature_set": "all",
+        "n_features": 40,
+        "MAE": 0.4816406914503909,
+        "MAE_std": 0.028596667657623417,
+        "RMSE": 0.7650876463230156,
+        "RMSE_std": 0.09503821248991849,
+        "R2": 0.9948238538217886,
+        "R2_std": 0.001293047455718519
+      },
+      {
+        "feature_set": "no_s4",
+        "n_features": 38,
+        "MAE": 0.485063032726804,
+        "MAE_std": 0.022056475807864385,
+        "RMSE": 0.7627752015097031,
+        "RMSE_std": 0.11620466358172676,
+        "R2": 0.9948073102479545,
+        "R2_std": 0.0016556282313708035
+      },
+      {
+        "feature_set": "important_only",
+        "n_features": 10,
+        "MAE": 0.5238361400359631,
+        "MAE_std": 0.027481623488522622,
+        "RMSE": 0.7827865205226573,
+        "RMSE_std": 0.0802781783444134,
+        "R2": 0.9946029055581462,
+        "R2_std": 0.0012101671976911584
+      },
+      {
+        "feature_set": "engineered_only",
+        "n_features": 32,
+        "MAE": 0.7154544529865845,
+        "MAE_std": 0.04260758774126432,
+        "RMSE": 1.2219614542050192,
+        "RMSE_std": 0.16803654990705566,
+        "R2": 0.9867453649516396,
+        "R2_std": 0.003633033385926912
+      }
+    ],
+    "cv_folds": 5,
+    "MAE": 0.43,
+    "RMSE": 0.6763,
+    "R2": 0.996,
+    "all_models_compared": [
+      {
+        "model": "CatBoost",
+        "MAE": 0.4300376637797,
+        "MAE_std": 0.024440412921751194,
+        "RMSE": 0.6763167280417,
+        "RMSE_std": 0.06937257719683648,
+        "R2": 0.995978041735421,
+        "R2_std": 0.0008462738628545549,
+        "cv_folds": 5
+      },
+      {
+        "model": "VotingEnsemble",
+        "MAE": 0.44530256266341983,
+        "MAE_std": 0.01453474084413254,
+        "RMSE": 0.7717937121047973,
+        "RMSE_std": 0.161109220544949,
+        "R2": 0.9945564732387533,
+        "R2_std": 0.0023771544521899715,
+        "cv_folds": 5
+      },
+      {
+        "model": "GradientBoosting",
+        "MAE": 0.4742787807168213,
+        "MAE_std": 0.027206739819389637,
+        "RMSE": 0.7405611131523975,
+        "RMSE_std": 0.10679517933177378,
+        "R2": 0.9951073795154277,
+        "R2_std": 0.0015908044767471462,
+        "cv_folds": 5
+      },
+      {
+        "model": "XGBoost",
+        "MAE": 0.5309268560842315,
+        "MAE_std": 0.0339899589513841,
+        "RMSE": 0.8594151324296883,
+        "RMSE_std": 0.1452588603417358,
+        "R2": 0.9933552280890113,
+        "R2_std": 0.0024817465443976103,
+        "cv_folds": 5
+      },
+      {
+        "model": "HistGradientBoosting",
+        "MAE": 0.607418831778992,
+        "MAE_std": 0.0450895284074996,
+        "RMSE": 0.9675728067412062,
+        "RMSE_std": 0.12943701008053035,
+        "R2": 0.9916750722973182,
+        "R2_std": 0.0024368206741627097,
+        "cv_folds": 5
+      },
+      {
+        "model": "LightGBM",
+        "MAE": 0.6136906593841265,
+        "MAE_std": 0.044767617485834056,
+        "RMSE": 1.049587728687979,
+        "RMSE_std": 0.1989531543685439,
+        "R2": 0.9900113568500484,
+        "R2_std": 0.00373143212414965,
+        "cv_folds": 5
+      },
+      {
+        "model": "RandomForest",
+        "MAE": 0.6929750011532976,
+        "MAE_std": 0.037602409452928406,
+        "RMSE": 1.2580951115255805,
+        "RMSE_std": 0.145403348668051,
+        "R2": 0.9860009662615343,
+        "R2_std": 0.0033543456188024723,
+        "cv_folds": 5
+      },
+      {
+        "model": "ExtraTrees",
+        "MAE": 0.7096112350622846,
+        "MAE_std": 0.03670451306504213,
+        "RMSE": 1.3386220507146485,
+        "RMSE_std": 0.21877709001992648,
+        "R2": 0.9839524015910557,
+        "R2_std": 0.005179910063956488,
+        "cv_folds": 5
+      },
+      {
+        "model": "Ridge",
+        "MAE": 3.3481902686043545,
+        "MAE_std": 0.040581295722146714,
+        "RMSE": 3.960626044955645,
+        "RMSE_std": 0.054602186827013253,
+        "R2": 0.8635866301897085,
+        "R2_std": 0.004991174837896858,
+        "cv_folds": 5
+      }
+    ],
+    "holdout_evaluation": null
+  },
+  "robustness_results": null,
+  "validity_classification_model": {
+    "name": "RandomForest",
+    "cv_folds": 5,
+    "accuracy": 0.981,
+    "precision": 0.9915,
+    "recall": 0.8657,
+    "f1": 0.9243,
+    "roc_auc": 0.936,
+    "confusion_matrix": [
+      [
+        865,
+        1
+      ],
+      [
+        18,
+        116
+      ]
+    ],
+    "chosen_threshold": 0.56,
+    "classifier_comparison": [
+      {
+        "classifier": "RandomForest",
+        "accuracy": 0.98,
+        "precision": 0.9672131147540983,
+        "recall": 0.8805970149253731,
+        "f1": 0.921875,
+        "roc_auc": 0.9360156492364966,
+        "chosen_threshold": 0.51
+      },
+      {
+        "classifier": "XGBoost",
+        "accuracy": 0.977,
+        "precision": 0.9512195121951219,
+        "recall": 0.8731343283582089,
+        "f1": 0.9105058365758755,
+        "roc_auc": 0.9306383785460688,
+        "chosen_threshold": 0.25
+      },
+      {
+        "classifier": "GradientBoosting",
+        "accuracy": 0.981,
+        "precision": 0.967479674796748,
+        "recall": 0.8880597014925373,
+        "f1": 0.9260700389105059,
+        "roc_auc": 0.9244166005997725,
+        "chosen_threshold": 0.43
+      },
+      {
+        "classifier": "LogisticRegression",
+        "accuracy": 0.953,
+        "precision": 0.8918918918918919,
+        "recall": 0.7388059701492538,
+        "f1": 0.8081632653061225,
+        "roc_auc": 0.9243821309158596,
+        "chosen_threshold": 0.81
+      },
+      {
+        "classifier": "LightGBM",
+        "accuracy": 0.982,
+        "precision": 0.9915254237288136,
+        "recall": 0.8731343283582089,
+        "f1": 0.9285714285714286,
+        "roc_auc": 0.9221588363034711,
+        "chosen_threshold": 0.21
+      },
+      {
+        "classifier": "HistGradientBoosting",
+        "accuracy": 0.979,
+        "precision": 0.9829059829059829,
+        "recall": 0.8582089552238806,
+        "f1": 0.9163346613545816,
+        "roc_auc": 0.9143169832132639,
+        "chosen_threshold": 0.41
+      }
+    ]
+  },
+  "anomaly_detection_stats": {
+    "override_z_threshold": 4.052191605562563,
+    "isolation_forest_params": {
+      "n_estimators": 200,
+      "max_features": 0.75,
+      "contamination": "auto"
+    },
+    "duplicate_logic_verification_train": {
+      "n_duplicate_rows": 24,
+      "n_duplicate_pairs": 12,
+      "n_duplicate_rows_labelled_invalid": 24,
+      "all_duplicates_invalid": true
+    },
+    "predicted_invalid_in_test": 40
+  },
+  "records": {
+    "training_records": 1000,
+    "test_records": 350
+  },
+  "note": "All metrics above are INTERNAL VALIDATION metrics computed via cross-validation on data/training_data.csv. data/test_data.csv has no ground truth and is not scored here."
+}
